@@ -145,4 +145,31 @@ class User extends Authenticatable
             return is_null($role->store_id) || $role->store_id === $storeId;
         });
     }
+
+    /**
+     * Check if user has a specific permission in active or specified context.
+     */
+    public function hasPermission(string $permission, ?string $tenantId = null, ?string $storeId = null): bool
+    {
+        return app(\App\Modules\Rbac\Services\RbacService::class)
+            ->userHasPermission($this, $permission, $tenantId, $storeId);
+    }
+
+    /**
+     * Check if user has a specific role in active or specified context.
+     */
+    public function hasRole(string|array $role, ?string $tenantId = null, ?string $storeId = null): bool
+    {
+        return app(\App\Modules\Rbac\Services\RbacService::class)
+            ->userHasRole($this, $role, $tenantId, $storeId);
+    }
+
+    /**
+     * Get all permission names for the user in active or specified context.
+     */
+    public function getPermissions(?string $tenantId = null, ?string $storeId = null): array
+    {
+        return app(\App\Modules\Rbac\Services\RbacService::class)
+            ->getUserPermissions($this, $tenantId, $storeId);
+    }
 }

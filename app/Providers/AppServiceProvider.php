@@ -25,6 +25,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        \Illuminate\Support\Facades\Gate::before(function ($user, string $ability) {
+            if ($user && method_exists($user, 'hasPermission')) {
+                if ($user->hasPermission($ability)) {
+                    return true;
+                }
+            }
+            return null;
+        });
     }
 }
