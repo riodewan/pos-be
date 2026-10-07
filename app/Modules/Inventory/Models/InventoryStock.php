@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Models;
 
 use App\Modules\Catalog\Models\Ingredient;
 use App\Modules\Tenant\Models\Store;
+use App\Core\Traits\BelongsToStore;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InventoryStock extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, BelongsToStore;
 
     protected $table = 'inventory_stocks';
 

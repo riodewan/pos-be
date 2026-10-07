@@ -94,4 +94,55 @@ class User extends Authenticatable
     {
         return $this->hasMany(AuditLog::class, 'user_id');
     }
+
+    /**
+     * Check if user is an internal platform administrator.
+     */
+    public function isInternalAdmin(): bool
+    {
+        if ($this->is_internal) {
+            return true;
+        }
+
+        return $this->userRoles()
+            ->whereHas('role', fn ($q) => $q->where('scope', 'INTERNAL'))
+            ->exists();
+    }
+
+    /**
+     * Check if user belongs to a specific tenant.
+     */
+    public function belongsToTenant(string $tenantId): bool
+    {
+        if ($this->isInternalAdmin()) {
+            return true;
+        }
+
+        return $this->tenantUsers()->where('tenant_id', $tenantId)->exists();
+    }
+
+    /**
+     * Check if user has access to a specific store within a tenant.
+     */
+    public function hasAccessToStore(string $storeId, string $tenantId): bool
+    {
+        if ($this->isInternalAdmin()) {
+            return true;
+        }
+
+        if (!$this->belongsToTenant($tenantId)) {
+            return false;
+        }
+
+        $roles = $this->userRoles()->where('tenant_id', $tenantId)->get();
+
+        if ($roles->isEmpty()) {
+            // If user is a tenant member with no restricted store roles, allow
+            return true;
+        }
+
+        return $roles->contains(function ($role) use ($storeId) {
+            return is_null($role->store_id) || $role->store_id === $storeId;
+        });
+    }
 }

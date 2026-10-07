@@ -3,8 +3,9 @@
 namespace App\Modules\RecipeMenu\Models;
 
 use App\Core\Enums\CommonStatus;
+use App\Core\Traits\BelongsToStore;
 use App\Modules\Catalog\Models\Product;
-use App\Modules\Tenant\Store;
+use App\Modules\Tenant\Models\Store;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Menu extends Model
 {
-    use HasFactory, HasUlids, SoftDeletes;
+    use HasFactory, HasUlids, SoftDeletes, BelongsToStore;
 
     protected $table = 'menus';
 

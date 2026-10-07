@@ -11,7 +11,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Core\Context\TenantContext::class, function () {
+            return new \App\Core\Context\TenantContext();
+        });
+
+        $this->app->singleton(\App\Core\Context\StoreContext::class, function () {
+            return new \App\Core\Context\StoreContext();
+        });
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Tenant\Models;
 
+use App\Core\Traits\BelongsToTenant;
 use App\Modules\Auth\Models\User;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TenantUser extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, BelongsToTenant;
 
     const UPDATED_AT = null;
 

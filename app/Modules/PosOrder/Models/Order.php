@@ -6,6 +6,7 @@ use App\Core\Enums\OrderSource;
 use App\Core\Enums\OrderStatus;
 use App\Modules\Auth\Models\User;
 use App\Modules\Tenant\Models\Store;
+use App\Core\Traits\BelongsToStore;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, BelongsToStore;
 
     protected $table = 'orders';
 

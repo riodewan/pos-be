@@ -9,6 +9,7 @@ use App\Modules\Inventory\Models\PurchaseItem;
 use App\Modules\Inventory\Models\WastageItem;
 use App\Modules\RecipeMenu\Models\RecipeItem;
 use App\Modules\Tenant\Models\Store;
+use App\Core\Traits\BelongsToStore;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Ingredient extends Model
 {
-    use HasFactory, HasUlids, SoftDeletes;
+    use HasFactory, HasUlids, SoftDeletes, BelongsToStore;
 
     protected $table = 'ingredients';
 

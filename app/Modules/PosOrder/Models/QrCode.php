@@ -4,6 +4,7 @@ namespace App\Modules\PosOrder\Models;
 
 use App\Core\Enums\QrStatus;
 use App\Modules\Tenant\Models\Store;
+use App\Core\Traits\BelongsToStore;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class QrCode extends Model
 {
-    use HasFactory, HasUlids, SoftDeletes;
+    use HasFactory, HasUlids, SoftDeletes, BelongsToStore;
 
     protected $table = 'qr_codes';
 

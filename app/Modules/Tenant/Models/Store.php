@@ -18,6 +18,7 @@ use App\Modules\RecipeMenu\Models\Menu;
 use App\Modules\RecipeMenu\Models\Recipe;
 use App\Modules\System\Models\AuditLog;
 use App\Modules\System\Models\Setting;
+use App\Core\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -27,7 +28,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Store extends Model
 {
-    use HasFactory, HasUlids, SoftDeletes;
+    use HasFactory, HasUlids, SoftDeletes, BelongsToTenant;
 
     protected $table = 'stores';
 
