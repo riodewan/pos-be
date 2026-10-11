@@ -56,3 +56,57 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
         ->middleware('permission:role.view');
 });
 
+/*
+|--------------------------------------------------------------------------
+| Store-Scoped Catalog & Raw Materials Routes
+|--------------------------------------------------------------------------
+|
+| Operates under active Store Context ('X-Store-Id' / 'X-Store-Code').
+| All data automatically scoped to current store.
+|
+*/
+Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->prefix('catalog')->group(function () {
+    // Measurement Units (Master data)
+    Route::get('/units', [\App\Modules\Catalog\Http\Controllers\UnitController::class, 'index'])
+        ->middleware('permission:unit.view');
+    Route::post('/units', [\App\Modules\Catalog\Http\Controllers\UnitController::class, 'store'])
+        ->middleware('permission:unit.create');
+
+    // Products
+    Route::get('/products', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'index'])
+        ->middleware('permission:product.view');
+    Route::post('/products', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'store'])
+        ->middleware('permission:product.create');
+    Route::get('/products/{id}', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'show'])
+        ->middleware('permission:product.view');
+    Route::put('/products/{id}', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'update'])
+        ->middleware('permission:product.update');
+    Route::delete('/products/{id}', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'destroy'])
+        ->middleware('permission:product.delete');
+
+    // Ingredients
+    Route::get('/ingredients', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'index'])
+        ->middleware('permission:ingredient.view');
+    Route::post('/ingredients', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'store'])
+        ->middleware('permission:ingredient.create');
+    Route::get('/ingredients/{id}', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'show'])
+        ->middleware('permission:ingredient.view');
+    Route::put('/ingredients/{id}', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'update'])
+        ->middleware('permission:ingredient.update');
+    Route::delete('/ingredients/{id}', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'destroy'])
+        ->middleware('permission:ingredient.delete');
+
+    // Suppliers
+    Route::get('/suppliers', [\App\Modules\Catalog\Http\Controllers\SupplierController::class, 'index'])
+        ->middleware('permission:supplier.view');
+    Route::post('/suppliers', [\App\Modules\Catalog\Http\Controllers\SupplierController::class, 'store'])
+        ->middleware('permission:supplier.create');
+    Route::get('/suppliers/{id}', [\App\Modules\Catalog\Http\Controllers\SupplierController::class, 'show'])
+        ->middleware('permission:supplier.view');
+    Route::put('/suppliers/{id}', [\App\Modules\Catalog\Http\Controllers\SupplierController::class, 'update'])
+        ->middleware('permission:supplier.update');
+    Route::delete('/suppliers/{id}', [\App\Modules\Catalog\Http\Controllers\SupplierController::class, 'destroy'])
+        ->middleware('permission:supplier.delete');
+});
+
+
