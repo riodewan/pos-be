@@ -178,6 +178,56 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::post('/wastages', [\App\Modules\Inventory\Http\Controllers\WastageController::class, 'store'])
             ->middleware('permission:wastage.create');
     });
+
+    // POS, Tables, Orders & Payments
+    Route::prefix('pos')->group(function () {
+        // Tables & QR Codes
+        Route::get('/tables', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'index'])
+            ->middleware('permission:table.view');
+        Route::post('/tables', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'store'])
+            ->middleware('permission:table.create');
+        Route::get('/tables/{id}', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'show'])
+            ->middleware('permission:table.view');
+        Route::put('/tables/{id}', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'update'])
+            ->middleware('permission:table.update');
+        Route::delete('/tables/{id}', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'destroy'])
+            ->middleware('permission:table.delete');
+        Route::post('/tables/{id}/qr', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'generateQr'])
+            ->middleware('permission:qr.generate');
+        Route::get('/tables/{id}/qr', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'getQrCodes'])
+            ->middleware('permission:qr.view');
+
+        // Orders
+        Route::get('/orders', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'index'])
+            ->middleware('permission:order.view');
+        Route::post('/orders', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'store'])
+            ->middleware('permission:order.create');
+        Route::get('/orders/{id}', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'show'])
+            ->middleware('permission:order.view');
+        Route::put('/orders/{id}/status', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'updateStatus'])
+            ->middleware('permission:order.update');
+        Route::post('/orders/{id}/cancel', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'cancel'])
+            ->middleware('permission:order.cancel');
+
+        // Payments
+        Route::get('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'index'])
+            ->middleware('permission:payment.view');
+        Route::post('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'store'])
+            ->middleware('permission:payment.process');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public Customer Routes (QR Ordering)
+|--------------------------------------------------------------------------
+|
+| Used by dine-in customers scanning a table QR code. No auth required.
+|
+*/
+Route::prefix('public')->group(function () {
+    Route::get('/qr/{token}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'resolve']);
+    Route::post('/qr/{token}/order', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'order']);
 });
 
 

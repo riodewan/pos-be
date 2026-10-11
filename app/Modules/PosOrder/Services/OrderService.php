@@ -1,0 +1,286 @@
+<?php
+
+namespace App\Modules\PosOrder\Services;
+
+use App\Core\Context\AppContext;
+use App\Core\Enums\OrderSource;
+use App\Core\Enums\OrderStatus;
+use App\Core\Enums\PaymentStatus;
+use App\Core\Enums\QrStatus;
+use App\Modules\Catalog\Models\Product;
+use App\Modules\PosOrder\Models\Order;
+use App\Modules\PosOrder\Models\OrderItem;
+use App\Modules\PosOrder\Models\QrCode;
+use App\Modules\PosOrder\Models\Table;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
+
+class OrderService
+{
+    /**
+     * List orders for the current store with filtering and pagination.
+     */
+    public function listOrders(
+        ?string $status = null,
+        ?string $tableId = null,
+        ?string $source = null,
+        int $perPage = 20
+    ): LengthAwarePaginator {
+        return Order::with(['table', 'orderItems.product', 'payments', 'createdBy'])
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($tableId, fn ($q) => $q->where('table_id', $tableId))
+            ->when($source, fn ($q) => $q->where('source', $source))
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+    }
+
+    /**
+     * Get order details.
+     */
+    public function getOrder(string $id): Order
+    {
+        return Order::with(['table', 'orderItems.product', 'payments', 'createdBy'])
+            ->findOrFail($id);
+    }
+
+    /**
+     * Create POS order (Cashier / Staff).
+     */
+    public function createPosOrder(array $data, ?string $userId = null): Order
+    {
+        $storeId = AppContext::storeId();
+
+        // Cross-store validation: Table (if provided) must belong to current store
+        if (!empty($data['table_id'])) {
+            $table = Table::withoutGlobalScope('store')
+                ->where('id', $data['table_id'])
+                ->where('store_id', $storeId)
+                ->whereNull('deleted_at')
+                ->first();
+
+            if (!$table) {
+                throw new InvalidArgumentException('The selected table does not belong to the current store.');
+            }
+        }
+
+        // Cross-store validation: All products must belong to current store
+        $productIds = collect($data['items'])->pluck('product_id')->unique()->all();
+        $products = Product::withoutGlobalScope('store')
+            ->whereIn('id', $productIds)
+            ->where('store_id', $storeId)
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('id');
+
+        if ($products->count() !== count($productIds)) {
+            throw new InvalidArgumentException('One or more selected products do not belong to the current store.');
+        }
+
+        return DB::transaction(function () use ($data, $storeId, $userId, $products) {
+            $orderNumber = 'ORD-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+
+            $subtotal = 0;
+            $itemsToCreate = [];
+
+            foreach ($data['items'] as $item) {
+                $product = $products->get($item['product_id']);
+                $quantity = (float) $item['quantity'];
+                $unitPrice = isset($item['unit_price']) ? (float) $item['unit_price'] : (float) ($product->selling_price ?? $product->price ?? 0);
+                $itemDiscount = isset($item['discount_amount']) ? (float) $item['discount_amount'] : 0;
+                $itemSubtotal = max(0, ($quantity * $unitPrice) - $itemDiscount);
+
+                $subtotal += $itemSubtotal;
+
+                $itemsToCreate[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'discount_amount' => $itemDiscount,
+                    'subtotal' => $itemSubtotal,
+                    'notes' => $item['notes'] ?? null,
+                ];
+            }
+
+            $orderDiscount = isset($data['discount_amount']) ? (float) $data['discount_amount'] : 0;
+            $taxAmount = isset($data['tax_amount']) ? (float) $data['tax_amount'] : 0;
+            $serviceCharge = isset($data['service_charge']) ? (float) $data['service_charge'] : 0;
+            $totalAmount = max(0, $subtotal - $orderDiscount + $taxAmount + $serviceCharge);
+
+            $order = Order::create([
+                'id' => (string) Str::ulid(),
+                'store_id' => $storeId,
+                'table_id' => $data['table_id'] ?? null,
+                'order_number' => $orderNumber,
+                'source' => $data['source'] ?? OrderSource::POS,
+                'customer_name' => $data['customer_name'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'status' => OrderStatus::PENDING,
+                'subtotal' => $subtotal,
+                'discount_amount' => $orderDiscount,
+                'tax_amount' => $taxAmount,
+                'service_charge' => $serviceCharge,
+                'total_amount' => $totalAmount,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $userId,
+            ]);
+
+            foreach ($itemsToCreate as $itemData) {
+                OrderItem::create([
+                    'id' => (string) Str::ulid(),
+                    'order_id' => $order->id,
+                    ...$itemData,
+                ]);
+            }
+
+            return $order->load(['table', 'orderItems.product']);
+        });
+    }
+
+    /**
+     * Create Customer QR Order.
+     * Public endpoint: customer orders via scanned QR token.
+     */
+    public function createQrOrder(string $qrToken, array $data): Order
+    {
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $qrToken)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$qrCode) {
+            throw new InvalidArgumentException('Invalid or inactive QR code.');
+        }
+
+        $storeId = $qrCode->store_id;
+        $tableId = $qrCode->table_id;
+
+        // Verify products belong to QR's store
+        $productIds = collect($data['items'])->pluck('product_id')->unique()->all();
+        $products = Product::withoutGlobalScope('store')
+            ->whereIn('id', $productIds)
+            ->where('store_id', $storeId)
+            ->where('status', 'ACTIVE')
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('id');
+
+        if ($products->count() !== count($productIds)) {
+            throw new InvalidArgumentException('One or more selected products are invalid or unavailable.');
+        }
+
+        return DB::transaction(function () use ($data, $storeId, $tableId, $products) {
+            $orderNumber = 'QR-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+
+            $subtotal = 0;
+            $itemsToCreate = [];
+
+            foreach ($data['items'] as $item) {
+                $product = $products->get($item['product_id']);
+                $quantity = (float) $item['quantity'];
+                $unitPrice = (float) ($product->selling_price ?? $product->price ?? 0);
+                $itemSubtotal = $quantity * $unitPrice;
+
+                $subtotal += $itemSubtotal;
+
+                $itemsToCreate[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'discount_amount' => 0,
+                    'subtotal' => $itemSubtotal,
+                    'notes' => $item['notes'] ?? null,
+                ];
+            }
+
+            $order = Order::create([
+                'id' => (string) Str::ulid(),
+                'store_id' => $storeId,
+                'table_id' => $tableId,
+                'order_number' => $orderNumber,
+                'source' => OrderSource::QR,
+                'customer_name' => $data['customer_name'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'status' => OrderStatus::PENDING,
+                'subtotal' => $subtotal,
+                'discount_amount' => 0,
+                'tax_amount' => 0,
+                'service_charge' => 0,
+                'total_amount' => $subtotal,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => null,
+            ]);
+
+            foreach ($itemsToCreate as $itemData) {
+                OrderItem::create([
+                    'id' => (string) Str::ulid(),
+                    'order_id' => $order->id,
+                    ...$itemData,
+                ]);
+            }
+
+            return $order->load(['table', 'orderItems.product']);
+        });
+    }
+
+    /**
+     * Transition order status.
+     */
+    public function updateStatus(Order $order, OrderStatus|string $newStatus): Order
+    {
+        if (is_string($newStatus)) {
+            $newStatus = OrderStatus::from($newStatus);
+        }
+
+        if ($order->status === OrderStatus::COMPLETED) {
+            throw new InvalidArgumentException('Cannot modify status of an already COMPLETED order.');
+        }
+
+        if ($order->status === OrderStatus::CANCELLED) {
+            throw new InvalidArgumentException('Cannot modify status of a CANCELLED order.');
+        }
+
+        // If transitioning to CANCELLED, verify no successful payment exists
+        if ($newStatus === OrderStatus::CANCELLED) {
+            $hasSuccessPayment = $order->payments()->where('status', PaymentStatus::SUCCESS)->exists();
+            if ($hasSuccessPayment) {
+                throw new InvalidArgumentException('Cannot cancel an order that has already been paid.');
+            }
+        }
+
+        $order->update(['status' => $newStatus]);
+
+        return $order->fresh(['table', 'orderItems.product', 'payments']);
+    }
+
+    /**
+     * Cancel an order.
+     */
+    public function cancelOrder(Order $order, ?string $reason = null): Order
+    {
+        if ($order->status === OrderStatus::COMPLETED) {
+            throw new InvalidArgumentException('Cannot cancel an already COMPLETED order.');
+        }
+
+        if ($order->status === OrderStatus::CANCELLED) {
+            throw new InvalidArgumentException('Order is already cancelled.');
+        }
+
+        $hasSuccessPayment = $order->payments()->where('status', PaymentStatus::SUCCESS)->exists();
+        if ($hasSuccessPayment) {
+            throw new InvalidArgumentException('Cannot cancel an order that has already been paid.');
+        }
+
+        $order->update([
+            'status' => OrderStatus::CANCELLED,
+            'notes' => $reason ? ($order->notes ? $order->notes . "\n[Cancelled: {$reason}]" : "[Cancelled: {$reason}]") : $order->notes,
+        ]);
+
+        return $order->fresh(['table', 'orderItems.product', 'payments']);
+    }
+}

@@ -41,6 +41,16 @@ class Product extends Model
         ];
     }
 
+    public function getPriceAttribute(): ?string
+    {
+        return $this->selling_price;
+    }
+
+    public function setPriceAttribute($value): void
+    {
+        $this->attributes['selling_price'] = $value;
+    }
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class, 'store_id');
