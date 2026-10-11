@@ -50,7 +50,6 @@ class Menu extends Model
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class, 'menu_items', 'menu_id', 'product_id')
-            ->withPivot('sort_order')
-            ->withTimestamps();
+            ->withPivot(['sort_order', 'created_at']);
     }
 }

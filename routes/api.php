@@ -109,4 +109,43 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->prefix('
         ->middleware('permission:supplier.delete');
 });
 
+/*
+|--------------------------------------------------------------------------
+| Store-Scoped Recipes & Menus Routes
+|--------------------------------------------------------------------------
+|
+| Operates under active Store Context ('X-Store-Id' / 'X-Store-Code').
+|
+*/
+Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(function () {
+    // Recipes
+    Route::prefix('recipes')->group(function () {
+        Route::get('/', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'index'])
+            ->middleware('permission:recipe.view');
+        Route::post('/', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'store'])
+            ->middleware('permission:recipe.create');
+        Route::get('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'show'])
+            ->middleware('permission:recipe.view');
+        Route::put('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'update'])
+            ->middleware('permission:recipe.update');
+        Route::delete('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'destroy'])
+            ->middleware('permission:recipe.delete');
+    });
+
+    // Menus
+    Route::prefix('menus')->group(function () {
+        Route::get('/', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'index'])
+            ->middleware('permission:menu.view');
+        Route::post('/', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'store'])
+            ->middleware('permission:menu.create');
+        Route::get('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'show'])
+            ->middleware('permission:menu.view');
+        Route::put('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'update'])
+            ->middleware('permission:menu.update');
+        Route::delete('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'destroy'])
+            ->middleware('permission:menu.delete');
+    });
+});
+
+
 
