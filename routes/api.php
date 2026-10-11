@@ -215,6 +215,22 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::post('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'store'])
             ->middleware('permission:payment.process');
     });
+
+    // Sales Reporting & Dashboard
+    Route::prefix('reports')->group(function () {
+        Route::get('/dashboard', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'dashboard'])
+            ->middleware('permission:report.sales');
+        Route::get('/sales', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'salesSummary'])
+            ->middleware('permission:report.sales');
+        Route::get('/products', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'topProducts'])
+            ->middleware('permission:report.sales');
+        Route::get('/payments', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'paymentMethods'])
+            ->middleware('permission:report.sales');
+        Route::get('/inventory-usage', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'inventoryUsage'])
+            ->middleware('permission:report.inventory');
+        Route::get('/cashiers', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'cashierShift'])
+            ->middleware('permission:report.financial');
+    });
 });
 
 /*
