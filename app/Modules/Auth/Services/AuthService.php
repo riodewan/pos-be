@@ -71,11 +71,14 @@ class AuthService
             'user_agent' => $userAgent,
         ]);
 
+        $user->loadMissing(['tenants', 'userRoles.role']);
+
         return [
             'user' => $user,
             'token' => $token,
         ];
     }
+
 
     /**
      * Revoke current access token and log LOGOUT event.

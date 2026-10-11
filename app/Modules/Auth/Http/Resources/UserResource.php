@@ -19,13 +19,27 @@ class UserResource extends JsonResource
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
             'tenants' => $this->whenLoaded('tenants', function () {
+                if ($this->is_internal && $this->tenants->isEmpty()) {
+                    return \App\Modules\Tenant\Models\Tenant::all()->map(fn ($t) => [
+                        'id' => $t->id,
+                        'name' => $t->name,
+                        'slug' => $t->slug,
+                        'status' => $t->status?->value ?? $t->status,
+                        'role' => 'SUPER_ADMIN',
+                    ]);
+                }
+
                 return $this->tenants->map(fn ($t) => [
                     'id' => $t->id,
                     'name' => $t->name,
                     'slug' => $t->slug,
                     'status' => $t->status?->value ?? $t->status,
+                    'role' => $this->relationLoaded('userRoles') 
+                        ? ($this->userRoles->firstWhere('tenant_id', $t->id)?->role?->name ?? 'OWNER')
+                        : 'OWNER',
                 ]);
             }),
+
             'roles' => $this->whenLoaded('userRoles', function () {
                 return $this->userRoles->map(fn ($ur) => [
                     'id' => $ur->id,
