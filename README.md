@@ -1,59 +1,82 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# POS SaaS Backend (Modular Monolith)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Multi-Tenant Point of Sale (POS) backend platform for coffee shops and F&B businesses, built with **Laravel 11**, **PHP 8+**, and **PostgreSQL**.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🚀 Fitur & Modul Utama
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+1. **Authentication & Identity (`App\Modules\Auth`)**: Sanctum token auth, registrasi, login, logout, profil, dan auto-logging audit ke `audit_logs`.
+2. **Multi-Tenant & Store Scoping (`App\Modules\Tenant`)**: Profil tenant, manajemen toko/outlet, anggota tim, dan context resolver middleware (`X-Tenant-Id` & `X-Store-Id`).
+3. **RBAC Engine (`App\Modules\Rbac`)**: Role `INTERNAL` (Super Admin) & `TENANT` (Owner, Manager, Inventory, Cashier), middleware hak akses `permission` & `role`.
+4. **Catalog & Raw Materials (`App\Modules\Catalog`)**: Satuan unit, produk, bahan baku, supplier dengan keunikan SKU per toko.
+5. **Recipes & Menus (`App\Modules\RecipeMenu`)**: Formulasi resep produk (HPP), katalog menu per outlet, validasi isolasi lintas toko (*cross-store*).
+6. **Purchasing & Inventory (`App\Modules\Inventory`)**: Purchase Orders (PO), penerimaan barang dengan perhitungan *Moving Average Cost*, stok opname, pencatatan wastage, dan buku besar mutasi imutabel (`inventory_movements`).
+7. **POS & Table Management (`App\Modules\PosOrder`)**: Meja outlet, status okupansi real-time, rotasi QR token, pesanan kasir, pesanan QR pelanggan (`/api/public/qr/{token}`), dan pemrosesan pembayaran dengan *recipe-based stock depletion*.
+8. **Sales Reporting & Dashboard (`App\Modules\Reporting`)**: KPI penjualan, tren harian, produk terlaris, rekap metode bayar, konsumsi bahan baku & margin laba kotor, dan rekap shift kasir.
+9. **System Audit & Settings (`App\Modules\System`)**: Append-only audit logs keamanan dan pengaturan hierarkis (`System -> Tenant -> Store`) sesuai Decision #8.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🛠️ Persyaratan Lingkungan
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- **PHP**: 8.2+ (dengan ekstensi `pdo_pgsql`, `pgsql`, `mbstring`, `bcmath`, `ctype`, `json`)
+- **PostgreSQL**: 15+ (Database `pos_db`, schema `public`)
+- **Composer**: 2.x
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## ⚙️ Panduan Menjalankan Lokal
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+1. **Clone & Masuk ke Direktori**:
+   ```bash
+   cd c:/Users/USER/Documents/Rio/pos-app/pos-be
+   ```
 
-### Premium Partners
+2. **Install Dependensi Composer**:
+   ```bash
+   composer install
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+3. **Konfigurasi Environment (`.env`)**:
+   Pastikan variabel PostgreSQL diatur dengan benar:
+   ```env
+   DB_CONNECTION=pgsql
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_DATABASE=pos_db
+   DB_USERNAME=postgres
+   DB_PASSWORD=postgres
+   ```
 
-## Contributing
+4. **Jalankan Migrasi & Database Seeder**:
+   ```bash
+   php artisan migrate
+   php artisan db:seed --class=RbacSeeder
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+5. **Jalankan Server Lokal**:
+   ```bash
+   php artisan serve
+   ```
+   API akan aktif di: `http://127.0.0.1:8000/api`
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## 🧪 Menjalankan Test Suite
 
-## Security Vulnerabilities
+Proyek ini dilengkapi dengan 77 feature dan unit test yang mencakup seluruh skenario validasi bisnis:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan test
+```
 
-## License
+Semua pengujian menggunakan trait `DatabaseTransactions` sehingga tidak meninggalkan data sampah di database.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+## 📖 Dokumentasi Lengkap API
+
+Dokumentasi lengkap seluruh 85 endpoint API (Request, Response, Headers, Permission, dan Format JSON) tersedia di:
+
+👉 **[`../docs/api_documentation.md`](../docs/api_documentation.md)**
