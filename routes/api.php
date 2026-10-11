@@ -145,6 +145,39 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::delete('/{id}', [\App\Modules\RecipeMenu\Http\Controllers\MenuController::class, 'destroy'])
             ->middleware('permission:menu.delete');
     });
+
+    // Inventory Management
+    Route::prefix('inventory')->group(function () {
+        // Purchases
+        Route::get('/purchases', [\App\Modules\Inventory\Http\Controllers\PurchaseController::class, 'index'])
+            ->middleware('permission:purchase.view');
+        Route::post('/purchases', [\App\Modules\Inventory\Http\Controllers\PurchaseController::class, 'store'])
+            ->middleware('permission:purchase.create');
+        Route::get('/purchases/{id}', [\App\Modules\Inventory\Http\Controllers\PurchaseController::class, 'show'])
+            ->middleware('permission:purchase.view');
+        Route::post('/purchases/{id}/receive', [\App\Modules\Inventory\Http\Controllers\PurchaseController::class, 'receive'])
+            ->middleware('permission:purchase.receive');
+        Route::post('/purchases/{id}/cancel', [\App\Modules\Inventory\Http\Controllers\PurchaseController::class, 'cancel'])
+            ->middleware('permission:purchase.cancel');
+
+        // Stocks & Adjustments
+        Route::get('/stocks', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'index'])
+            ->middleware('permission:inventory.view');
+        Route::get('/stocks/{ingredientId}', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'show'])
+            ->middleware('permission:inventory.view');
+        Route::post('/adjustments', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'adjust'])
+            ->middleware('permission:inventory.adjust');
+
+        // Movements (Audit Ledger)
+        Route::get('/movements', [\App\Modules\Inventory\Http\Controllers\InventoryMovementController::class, 'index'])
+            ->middleware('permission:inventory.movement');
+
+        // Wastage
+        Route::get('/wastages', [\App\Modules\Inventory\Http\Controllers\WastageController::class, 'index'])
+            ->middleware('permission:wastage.view');
+        Route::post('/wastages', [\App\Modules\Inventory\Http\Controllers\WastageController::class, 'store'])
+            ->middleware('permission:wastage.create');
+    });
 });
 
 

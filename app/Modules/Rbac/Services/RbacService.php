@@ -188,7 +188,7 @@ class RbacService
                 'description' => 'Inventory staff managing stock, purchasing, wastage, and suppliers.',
                 'permissions' => [
                     'inventory.view', 'inventory.adjust', 'inventory.movement',
-                    'purchase.view', 'purchase.create', 'purchase.update', 'purchase.receive',
+                    'purchase.view', 'purchase.create', 'purchase.update', 'purchase.receive', 'purchase.cancel',
                     'wastage.view', 'wastage.create', 'wastage.approve',
                     'supplier.view', 'supplier.create', 'supplier.update',
                     'ingredient.view', 'ingredient.create', 'ingredient.update',
