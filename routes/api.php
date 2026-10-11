@@ -58,6 +58,29 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
 
 /*
 |--------------------------------------------------------------------------
+| System, Audit Logs & Settings Routes
+|--------------------------------------------------------------------------
+|
+| Operates under active Tenant Context ('X-Tenant-Id').
+|
+*/
+Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('system')->group(function () {
+    // Audit Logs
+    Route::get('/audit-logs', [\App\Modules\System\Http\Controllers\AuditLogController::class, 'index'])
+        ->middleware('permission:audit.view');
+
+    // Settings
+    Route::get('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'index'])
+        ->middleware('permission:tenant.settings');
+    Route::post('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'store'])
+        ->middleware('permission:tenant.settings');
+    Route::get('/settings/{key}', [\App\Modules\System\Http\Controllers\SettingController::class, 'show'])
+        ->middleware('permission:tenant.settings');
+});
+
+
+/*
+|--------------------------------------------------------------------------
 | Store-Scoped Catalog & Raw Materials Routes
 |--------------------------------------------------------------------------
 |
