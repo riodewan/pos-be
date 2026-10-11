@@ -27,11 +27,20 @@ class QrCode extends Model
         'status',
     ];
 
+    protected $appends = [
+        'is_active',
+    ];
+
     protected function casts(): array
     {
         return [
             'status' => QrStatus::class,
         ];
+    }
+
+    public function getIsActiveAttribute(): bool
+    {
+        return $this->status === QrStatus::ACTIVE;
     }
 
     public function store(): BelongsTo

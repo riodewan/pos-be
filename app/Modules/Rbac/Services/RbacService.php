@@ -201,7 +201,7 @@ class RbacService
                     'order.view', 'order.create', 'order.update', 'order.cancel',
                     'payment.view', 'payment.process',
                     'table.view', 'table.update',
-                    'qr.view',
+                    'qr.view', 'qr.generate',
                     'product.view', 'menu.view',
                 ],
             ],
