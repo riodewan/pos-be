@@ -267,6 +267,7 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
 Route::prefix('public')->group(function () {
     Route::get('/qr/{token}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'resolve']);
     Route::post('/qr/{token}/order', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'order']);
+    Route::post('/qr/{token}/order/{orderId}/pay', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'payOrder']);
     Route::get('/qr/{token}/order/{orderId}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'showOrder']);
 });
 

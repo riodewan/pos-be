@@ -354,6 +354,75 @@ class PosOrderManagementTest extends TestCase
         ]);
     }
 
+    public function test_customer_qr_direct_payment_marks_order_paid_and_preparing(): void
+    {
+        $table = Table::create([
+            'id' => (string) Str::ulid(),
+            'store_id' => $this->store1->id,
+            'name' => 'Meja Bar 06',
+            'code' => 'BAR-06',
+            'capacity' => 2,
+            'status' => 'ACTIVE',
+        ]);
+
+        $token = 'DIRECT-PAY-QR-' . Str::random(10);
+        QrCode::create([
+            'id' => (string) Str::ulid(),
+            'store_id' => $this->store1->id,
+            'table_id' => $table->id,
+            'token' => $token,
+            'status' => QrStatus::ACTIVE,
+        ]);
+
+        // Customer orders and pays directly via QRIS
+        $response = $this->postJson("/api/public/qr/{$token}/order", [
+            'customer_name' => 'Siti Rahma',
+            'customer_phone' => '081987654321',
+            'payment_method' => 'QRIS',
+            'items' => [
+                [
+                    'product_id' => $this->productAmericano->id,
+                    'quantity' => 1,
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.status', 'PREPARING')
+            ->assertJsonPath('data.source', 'QR');
+
+        $orderId = $response->json('data.id');
+
+        // Verify successful payment record exists
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $orderId,
+            'method' => 'QRIS',
+            'status' => 'SUCCESS',
+        ]);
+
+        // Cafe staff prepares order (READY) and closes it (COMPLETED)
+        $readyRes = $this->actingAs($this->cashier)
+            ->withHeaders([
+                'X-Tenant-Id' => $this->tenant->id,
+                'X-Store-Id' => $this->store1->id,
+            ])
+            ->putJson("/api/pos/orders/{$orderId}/status", [
+                'status' => 'READY',
+            ]);
+        $readyRes->assertStatus(200)->assertJsonPath('data.status', 'READY');
+
+        // Close order
+        $completeRes = $this->actingAs($this->cashier)
+            ->withHeaders([
+                'X-Tenant-Id' => $this->tenant->id,
+                'X-Store-Id' => $this->store1->id,
+            ])
+            ->putJson("/api/pos/orders/{$orderId}/status", [
+                'status' => 'COMPLETED',
+            ]);
+        $completeRes->assertStatus(200)->assertJsonPath('data.status', 'COMPLETED');
+    }
+
     public function test_cashier_create_pos_order_with_cross_store_protection(): void
     {
         $tableStore1 = Table::create([

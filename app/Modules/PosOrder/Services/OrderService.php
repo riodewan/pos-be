@@ -6,6 +6,7 @@ use App\Core\Context\AppContext;
 use App\Core\Enums\CommonStatus;
 use App\Core\Enums\OrderSource;
 use App\Core\Enums\OrderStatus;
+use App\Core\Enums\PaymentMethod;
 use App\Core\Enums\PaymentStatus;
 use App\Core\Enums\QrStatus;
 use App\Core\Enums\TableStatus;
@@ -251,7 +252,24 @@ class OrderService
                 ]);
             }
 
-            return $order->load(['table', 'orderItems.product']);
+            // Direct Customer Payment (Self-Service QR Flow)
+            if (!empty($data['payment_method'])) {
+                $method = PaymentMethod::tryFrom($data['payment_method']) ?? PaymentMethod::QRIS;
+                $paymentService = app(\App\Modules\PosOrder\Services\PaymentService::class);
+                $paymentService->processPayment($order, [
+                    'method' => $method,
+                    'amount' => $totalAmount,
+                    'provider' => 'QRIS_SIMULATOR',
+                    'provider_reference' => 'QRIS-' . date('Ymd') . '-' . strtoupper(Str::random(8)),
+                    'metadata' => [
+                        'channel' => 'CUSTOMER_QR_SELF_SERVICE',
+                        'paid_at' => now()->toIso8601String(),
+                    ],
+                    'auto_complete' => false,
+                ]);
+            }
+
+            return $order->fresh(['table', 'orderItems.product', 'payments']);
         });
     }
 

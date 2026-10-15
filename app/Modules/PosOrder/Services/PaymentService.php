@@ -10,8 +10,11 @@ use App\Core\Enums\PaymentMethod;
 use App\Core\Enums\PaymentStatus;
 use App\Modules\Inventory\Models\InventoryMovement;
 use App\Modules\Inventory\Models\InventoryStock;
+use App\Core\Enums\OrderSource;
+use App\Core\Enums\TableStatus;
 use App\Modules\PosOrder\Models\Order;
 use App\Modules\PosOrder\Models\Payment;
+use App\Modules\PosOrder\Models\Table;
 use App\Modules\RecipeMenu\Models\Recipe;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -35,9 +38,9 @@ class PaymentService
      */
     public function processPayment(Order $order, array $data, ?string $userId = null): Payment
     {
-        $storeId = AppContext::storeId();
+        $storeId = AppContext::storeId() ?: $order->store_id;
 
-        if ($order->store_id !== $storeId) {
+        if (AppContext::storeId() && $order->store_id !== AppContext::storeId()) {
             throw new InvalidArgumentException('Order does not belong to the current store.');
         }
 
@@ -144,8 +147,16 @@ class PaymentService
                 }
             }
 
-            // Update order status to COMPLETED
-            $lockedOrder->update(['status' => OrderStatus::COMPLETED]);
+            $autoComplete = $data['auto_complete'] ?? ($lockedOrder->source === OrderSource::POS);
+
+            if ($autoComplete) {
+                // Update order status to COMPLETED
+                $lockedOrder->update(['status' => OrderStatus::COMPLETED]);
+            } else {
+                // For QR orders or active table orders paid upfront:
+                // Move status to PREPARING so staff can prepare food/beverages and close order when done
+                $lockedOrder->update(['status' => OrderStatus::PREPARING]);
+            }
 
             return $payment->load('order');
         });

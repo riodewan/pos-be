@@ -106,6 +106,7 @@ class PublicQrController extends Controller
             'customer_name' => ['nullable', 'string', 'max:100'],
             'customer_phone' => ['nullable', 'string', 'max:20'],
             'notes' => ['nullable', 'string'],
+            'payment_method' => ['nullable', 'string', 'in:QRIS,ONLINE,TRANSFER,EDC,CASH'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'string'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
@@ -119,6 +120,58 @@ class PublicQrController extends Controller
                 'message' => 'Order placed successfully.',
                 'data' => $order,
             ], 201);
+        } catch (InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Public QR Customer Direct Payment.
+     * Allows customer to pay for their order via QRIS/Online directly at the table.
+     */
+    public function payOrder(Request $request, string $token, string $orderId): JsonResponse
+    {
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $token)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$qrCode) {
+            return response()->json(['message' => 'Invalid or inactive QR code.'], 404);
+        }
+
+        $order = Order::withoutGlobalScope('store')
+            ->where('id', $orderId)
+            ->where('store_id', $qrCode->store_id)
+            ->where('table_id', $qrCode->table_id)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'method' => ['required', 'string', 'in:QRIS,ONLINE,TRANSFER,EDC,CASH'],
+            'provider' => ['nullable', 'string'],
+        ]);
+
+        try {
+            $paymentService = app(\App\Modules\PosOrder\Services\PaymentService::class);
+            $payment = $paymentService->processPayment($order, [
+                'method' => $validated['method'],
+                'amount' => (float) $order->total_amount,
+                'provider' => $validated['provider'] ?? 'QRIS_GATEWAY',
+                'provider_reference' => 'QRIS-' . date('Ymd') . '-' . strtoupper(\Illuminate\Support\Str::random(8)),
+                'metadata' => [
+                    'channel' => 'CUSTOMER_QR_SELF_SERVICE',
+                    'paid_at' => now()->toIso8601String(),
+                ],
+                'auto_complete' => false,
+            ]);
+
+            return response()->json([
+                'message' => 'Payment processed successfully.',
+                'data' => $order->fresh(['table', 'orderItems.product', 'payments']),
+            ]);
         } catch (InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
