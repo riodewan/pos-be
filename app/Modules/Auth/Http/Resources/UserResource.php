@@ -35,8 +35,8 @@ class UserResource extends JsonResource
                     'slug' => $t->slug,
                     'status' => $t->status?->value ?? $t->status,
                     'role' => $this->relationLoaded('userRoles') 
-                        ? ($this->userRoles->firstWhere('tenant_id', $t->id)?->role?->name ?? 'OWNER')
-                        : 'OWNER',
+                        ? ($this->userRoles->firstWhere('tenant_id', $t->id)?->role?->name ?? 'STAFF')
+                        : 'STAFF',
                 ]);
             }),
 
