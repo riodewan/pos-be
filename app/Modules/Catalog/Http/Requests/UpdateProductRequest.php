@@ -33,6 +33,7 @@ class UpdateProductRequest extends FormRequest
                     ->ignore($productId),
             ],
             'description' => ['nullable', 'string'],
+            'image_url' => ['nullable', 'string', 'max:500'],
             'selling_price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'status' => ['nullable', new Enum(CommonStatus::class)],
         ];

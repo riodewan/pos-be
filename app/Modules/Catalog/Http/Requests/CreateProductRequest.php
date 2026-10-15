@@ -30,6 +30,7 @@ class CreateProductRequest extends FormRequest
                     ->whereNull('deleted_at'),
             ],
             'description' => ['nullable', 'string'],
+            'image_url' => ['nullable', 'string', 'max:500'],
             'selling_price' => ['required', 'numeric', 'min:0'],
             'status' => ['nullable', new Enum(CommonStatus::class)],
         ];

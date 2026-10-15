@@ -29,6 +29,7 @@ class Product extends Model
         'name',
         'sku',
         'description',
+        'image_url',
         'selling_price',
         'status',
     ];

@@ -207,30 +207,33 @@ class RbacService
         $createdRoles = [];
 
         foreach ($roleDefinitions as $roleName => $def) {
-            $role = Role::create([
-                'id' => (string) Str::ulid(),
-                'tenant_id' => $tenant->id,
-                'name' => $roleName,
-                'scope' => RoleScope::TENANT,
-                'is_default' => true,
-                'description' => $def['description'],
-            ]);
+            $role = Role::firstOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'name' => $roleName,
+                ],
+                [
+                    'id' => (string) Str::ulid(),
+                    'scope' => RoleScope::TENANT,
+                    'is_default' => true,
+                    'description' => $def['description'],
+                ]
+            );
 
             // Sync permissions
             $permissionIds = [];
             foreach ($def['permissions'] as $permName) {
                 if (isset($allPermissions[$permName])) {
-                    $permissionIds[] = [
-                        'id' => (string) Str::ulid(),
-                        'role_id' => $role->id,
-                        'permission_id' => $allPermissions[$permName]->id,
-                        'created_at' => now(),
-                    ];
+                    RolePermission::firstOrCreate(
+                        [
+                            'role_id' => $role->id,
+                            'permission_id' => $allPermissions[$permName]->id,
+                        ],
+                        [
+                            'id' => (string) Str::ulid(),
+                        ]
+                    );
                 }
-            }
-
-            if (!empty($permissionIds)) {
-                RolePermission::insert($permissionIds);
             }
 
             $createdRoles[$roleName] = $role;

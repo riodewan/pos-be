@@ -177,7 +177,8 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Single Espresso',
                 'sku' => 'PRD-ESP-01',
                 'selling_price' => 20000.00,
-                'description' => 'Single shot rich espresso extraction',
+                'description' => 'Ekstraksi single shot espresso pekat dengan crema keemasan yang tebal.',
+                'image_url' => 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=600&auto=format&fit=crop&q=80',
                 'recipe' => [
                     ['ing_sku' => 'ING-ESP-01', 'unit_id' => $unitGram->id, 'qty' => 18.0],
                 ],
@@ -186,7 +187,8 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Iced Americano',
                 'sku' => 'PRD-AME-01',
                 'selling_price' => 28000.00,
-                'description' => 'Double shot espresso diluted with mineral water and ice',
+                'description' => 'Double shot espresso dingin yang segar dengan es batu dan air mineral murni.',
+                'image_url' => 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=600&auto=format&fit=crop&q=80',
                 'recipe' => [
                     ['ing_sku' => 'ING-ESP-01', 'unit_id' => $unitGram->id, 'qty' => 18.0],
                     ['ing_sku' => 'ING-CUP-12', 'unit_id' => $unitPcs->id, 'qty' => 1.0],
@@ -196,7 +198,8 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Caffe Latte',
                 'sku' => 'PRD-LAT-01',
                 'selling_price' => 35000.00,
-                'description' => 'Espresso with steamed fresh milk and microfoam',
+                'description' => 'Kombinasi harmonis espresso harum dan steamed fresh milk lembut berpola latte art.',
+                'image_url' => 'https://images.unsplash.com/photo-1534778101976-62847782c213?w=600&auto=format&fit=crop&q=80',
                 'recipe' => [
                     ['ing_sku' => 'ING-ESP-01', 'unit_id' => $unitGram->id, 'qty' => 18.0],
                     ['ing_sku' => 'ING-MLK-01', 'unit_id' => $unitMl->id, 'qty' => 150.0],
@@ -207,13 +210,33 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Vanilla Latte',
                 'sku' => 'PRD-VLAT-01',
                 'selling_price' => 38000.00,
-                'description' => 'Caffe latte infused with Madagascar vanilla syrup',
+                'description' => 'Latte creamy spesial dipadukan dengan aroma manis sirup vanilla alami Madagascar.',
+                'image_url' => 'https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?w=600&auto=format&fit=crop&q=80',
                 'recipe' => [
                     ['ing_sku' => 'ING-ESP-01', 'unit_id' => $unitGram->id, 'qty' => 18.0],
                     ['ing_sku' => 'ING-MLK-01', 'unit_id' => $unitMl->id, 'qty' => 150.0],
                     ['ing_sku' => 'ING-VAN-01', 'unit_id' => $unitMl->id, 'qty' => 20.0],
                     ['ing_sku' => 'ING-CUP-12', 'unit_id' => $unitPcs->id, 'qty' => 1.0],
                 ],
+            ],
+            [
+                'name' => 'Matcha Green Tea Latte',
+                'sku' => 'PRD-MAT-01',
+                'selling_price' => 36000.00,
+                'description' => 'Bubuk matcha Uji Jepang premium diseduh dengan susu segar yang creamy dan harum.',
+                'image_url' => 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=600&auto=format&fit=crop&q=80',
+                'recipe' => [
+                    ['ing_sku' => 'ING-MLK-01', 'unit_id' => $unitMl->id, 'qty' => 150.0],
+                    ['ing_sku' => 'ING-CUP-12', 'unit_id' => $unitPcs->id, 'qty' => 1.0],
+                ],
+            ],
+            [
+                'name' => 'Butter Croissant',
+                'sku' => 'PRD-CRS-01',
+                'selling_price' => 25000.00,
+                'description' => 'Pastry Prancis renyah berlapis dengan aroma butter New Zealand yang wangi dan gurih.',
+                'image_url' => 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=600&auto=format&fit=crop&q=80',
+                'recipe' => [],
             ],
         ];
 
@@ -225,23 +248,33 @@ class DemoTenantSeeder extends Seeder
                     'name' => $prodData['name'],
                     'selling_price' => $prodData['selling_price'],
                     'description' => $prodData['description'],
+                    'image_url' => $prodData['image_url'],
                     'status' => CommonStatus::ACTIVE,
                 ]
             );
+
+            $product->update([
+                'name' => $prodData['name'],
+                'selling_price' => $prodData['selling_price'],
+                'description' => $prodData['description'],
+                'image_url' => $prodData['image_url'],
+                'status' => CommonStatus::ACTIVE,
+            ]);
 
             // Create Recipe
-            $recipe = Recipe::firstOrCreate(
-                ['store_id' => $store->id, 'product_id' => $product->id],
-                [
-                    'id' => (string) Str::ulid(),
-                    'name' => 'Resep Standar ' . $product->name,
-                    'status' => CommonStatus::ACTIVE,
-                ]
-            );
+            if (!empty($prodData['recipe'])) {
+                $recipe = Recipe::firstOrCreate(
+                    ['store_id' => $store->id, 'product_id' => $product->id],
+                    [
+                        'id' => (string) Str::ulid(),
+                        'name' => 'Resep Standar ' . $product->name,
+                        'status' => CommonStatus::ACTIVE,
+                    ]
+                );
 
-            foreach ($prodData['recipe'] as $recItem) {
-                if (isset($ingredients[$recItem['ing_sku']])) {
-                    RecipeItem::firstOrCreate(
+                foreach ($prodData['recipe'] as $recItem) {
+                    if (isset($ingredients[$recItem['ing_sku']])) {
+                        RecipeItem::firstOrCreate(
                         [
                             'recipe_id' => $recipe->id,
                             'ingredient_id' => $ingredients[$recItem['ing_sku']]->id,
@@ -255,6 +288,7 @@ class DemoTenantSeeder extends Seeder
                 }
             }
         }
+    }
 
         // 7. Create Tables with Active QR Codes
         $tablesData = [
