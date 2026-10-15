@@ -19,7 +19,7 @@ class UserResource extends JsonResource
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
             'tenants' => $this->whenLoaded('tenants', function () {
-                if ($this->is_internal && $this->tenants->isEmpty()) {
+                if ($this->is_internal) {
                     return \App\Modules\Tenant\Models\Tenant::all()->map(fn ($t) => [
                         'id' => $t->id,
                         'name' => $t->name,

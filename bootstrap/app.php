@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'store.context' => \App\Core\Http\Middleware\ResolveStoreContext::class,
             'permission' => \App\Core\Http\Middleware\RequirePermission::class,
             'role' => \App\Core\Http\Middleware\RequireRole::class,
+            'internal.admin' => \App\Core\Http\Middleware\EnsureInternalAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -267,6 +267,26 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
 Route::prefix('public')->group(function () {
     Route::get('/qr/{token}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'resolve']);
     Route::post('/qr/{token}/order', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'order']);
+    Route::get('/qr/{token}/order/{orderId}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'showOrder']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Internal Platform Administration Routes (Super Admin)
+|--------------------------------------------------------------------------
+|
+| Access restricted to platform internal administrators (is_internal = true).
+| Operates globally across all tenants without requiring X-Tenant-Id header.
+|
+*/
+Route::middleware(['auth:sanctum', 'internal.admin'])->prefix('internal')->group(function () {
+    Route::get('/overview', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'overview']);
+    Route::get('/tenants', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listTenants']);
+    Route::get('/tenants/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'showTenant']);
+    Route::post('/tenants', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'createTenant']);
+    Route::put('/tenants/{id}/status', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateTenantStatus']);
+    Route::get('/stores', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listStores']);
+    Route::get('/audit-logs', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'auditLogs']);
 });
 
 

@@ -43,6 +43,14 @@ class PublicQrController extends Controller
             ->orderBy('name', 'asc')
             ->get();
 
+        $activeOrder = \App\Modules\PosOrder\Models\Order::withoutGlobalScope('store')
+            ->where('store_id', $qrCode->store_id)
+            ->where('table_id', $qrCode->table_id)
+            ->whereIn('status', ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'])
+            ->with(['orderItems.product'])
+            ->latest()
+            ->first();
+
         return response()->json([
             'message' => 'QR code resolved successfully.',
             'data' => [
@@ -58,6 +66,7 @@ class PublicQrController extends Controller
                     'code' => $qrCode->table->code,
                     'capacity' => $qrCode->table->capacity,
                 ],
+                'active_order' => $activeOrder,
                 'products' => $products,
             ],
         ]);
@@ -91,5 +100,42 @@ class PublicQrController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Public QR Order Status Tracking.
+     * Allows customer to check status of their placed order using QR token and order ID.
+     */
+    public function showOrder(string $token, string $orderId): JsonResponse
+    {
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $token)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$qrCode) {
+            return response()->json([
+                'message' => 'Invalid or inactive QR code.',
+            ], 404);
+        }
+
+        $order = \App\Modules\PosOrder\Models\Order::withoutGlobalScope('store')
+            ->where('id', $orderId)
+            ->where('store_id', $qrCode->store_id)
+            ->where('table_id', $qrCode->table_id)
+            ->with(['table', 'orderItems.product', 'payments'])
+            ->first();
+
+        if (!$order) {
+            return response()->json([
+                'message' => 'Order not found for this table.',
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Order retrieved successfully.',
+            'data' => $order,
+        ]);
     }
 }

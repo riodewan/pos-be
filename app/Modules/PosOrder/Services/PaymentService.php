@@ -115,8 +115,7 @@ class PaymentService
                             ->first();
 
                         $currentStockQty = $stock ? (float) $stock->quantity : 0;
-
-                        if ($currentStockQty < $deductQty) {
+                        if (!$stock || $currentStockQty < $deductQty) {
                             $ingredientName = $recipeItem->ingredient ? $recipeItem->ingredient->name : $recipeItem->ingredient_id;
                             throw new InvalidArgumentException("Insufficient stock for ingredient '{$ingredientName}' to fulfill order.");
                         }

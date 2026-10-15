@@ -2,10 +2,12 @@
 
 namespace App\Modules\Tenant\Services;
 
+use App\Core\Enums\CommonStatus;
 use App\Modules\Auth\Models\User;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\UserRole;
 use App\Modules\Rbac\Services\RbacService;
+use App\Modules\Tenant\Models\Store;
 use App\Modules\Tenant\Models\Tenant;
 use App\Modules\Tenant\Models\TenantUser;
 use Illuminate\Database\Eloquent\Collection;
@@ -19,6 +21,69 @@ class TenantService
     public function __construct(
         protected RbacService $rbacService
     ) {}
+
+    /**
+     * Register a new Tenant with default store, owner user, and RBAC roles.
+     */
+    public function registerTenant(array $data): Tenant
+    {
+        return DB::transaction(function () use ($data) {
+            $slug = Str::slug($data['name']);
+            if (Tenant::where('slug', $slug)->exists()) {
+                $slug .= '-' . Str::lower(Str::random(4));
+            }
+
+            $tenant = Tenant::create([
+                'id' => (string) Str::ulid(),
+                'name' => $data['name'],
+                'slug' => $slug,
+                'email' => $data['email'],
+                'phone' => $data['phone'] ?? null,
+                'address' => $data['address'] ?? null,
+                'status' => 'ACTIVE',
+            ]);
+
+            // 1. Create Default Tenant Roles
+            $roles = $this->rbacService->createDefaultTenantRoles($tenant);
+
+            // 2. Create Default Store
+            Store::create([
+                'id' => (string) Str::ulid(),
+                'tenant_id' => $tenant->id,
+                'name' => $data['store_name'] ?? ($data['name'] . ' Main Outlet'),
+                'code' => $data['store_code'] ?? 'MAIN-01',
+                'status' => CommonStatus::ACTIVE,
+            ]);
+
+            // 3. Create or find Owner User
+            $owner = User::firstOrCreate(
+                ['email' => $data['owner_email']],
+                [
+                    'id' => (string) Str::ulid(),
+                    'name' => $data['owner_name'],
+                    'password' => $data['password'],
+                    'is_internal' => false,
+                    'is_active' => true,
+                ]
+            );
+
+            // 4. Attach TenantUser pivot
+            TenantUser::firstOrCreate([
+                'tenant_id' => $tenant->id,
+                'user_id' => $owner->id,
+            ], [
+                'id' => (string) Str::ulid(),
+                'joined_at' => now(),
+            ]);
+
+            // 5. Assign Owner Role
+            if (isset($roles['Owner'])) {
+                $this->rbacService->assignRole($owner, $roles['Owner'], $tenant->id, null);
+            }
+
+            return $tenant->load(['stores']);
+        });
+    }
 
     /**
      * Get tenant profile with counts.

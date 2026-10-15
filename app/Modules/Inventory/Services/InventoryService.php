@@ -317,7 +317,7 @@ class InventoryService
                 $currentQty = $stock ? (float) $stock->quantity : 0;
                 $wasteQty = (float) $item['quantity'];
 
-                if ($currentQty < $wasteQty) {
+                if (!$stock || $currentQty < $wasteQty) {
                     throw new InvalidArgumentException("Insufficient stock for ingredient {$item['ingredient_id']} to record wastage.");
                 }
 

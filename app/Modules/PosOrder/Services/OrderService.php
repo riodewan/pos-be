@@ -198,6 +198,17 @@ class OrderService
                 ];
             }
 
+            $store = \App\Modules\Tenant\Models\Store::find($storeId);
+            $tenantId = $store ? $store->tenant_id : null;
+            $settingService = app(\App\Modules\System\Services\SettingService::class);
+            $taxPct = (float) $settingService->get('tax_percentage', $storeId, $tenantId, 0);
+            $servicePct = (float) $settingService->get('service_charge_percentage', $storeId, $tenantId, 0);
+
+            $serviceCharge = $servicePct > 0 ? round(($subtotal * $servicePct) / 100, 2) : 0;
+            $taxable = $subtotal + $serviceCharge;
+            $taxAmount = $taxPct > 0 ? round(($taxable * $taxPct) / 100, 2) : 0;
+            $totalAmount = $subtotal + $serviceCharge + $taxAmount;
+
             $order = Order::create([
                 'id' => (string) Str::ulid(),
                 'store_id' => $storeId,
@@ -209,9 +220,9 @@ class OrderService
                 'status' => OrderStatus::PENDING,
                 'subtotal' => $subtotal,
                 'discount_amount' => 0,
-                'tax_amount' => 0,
-                'service_charge' => 0,
-                'total_amount' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'service_charge' => $serviceCharge,
+                'total_amount' => $totalAmount,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => null,
             ]);
