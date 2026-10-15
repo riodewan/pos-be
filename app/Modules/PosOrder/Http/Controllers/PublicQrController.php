@@ -2,10 +2,14 @@
 
 namespace App\Modules\PosOrder\Http\Controllers;
 
+use App\Core\Enums\CommonStatus;
 use App\Core\Enums\QrStatus;
+use App\Core\Enums\TableStatus;
 use App\Modules\Catalog\Models\Product;
+use App\Modules\PosOrder\Models\Order;
 use App\Modules\PosOrder\Models\QrCode;
 use App\Modules\PosOrder\Services\OrderService;
+use App\Modules\System\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -14,12 +18,13 @@ use InvalidArgumentException;
 class PublicQrController extends Controller
 {
     public function __construct(
-        protected OrderService $orderService
+        protected OrderService $orderService,
+        protected SettingService $settingService
     ) {}
 
     /**
      * Public QR Resolution.
-     * Resolves store, table, and active products using scanned QR token.
+     * Resolves store, table, active products, and settings using scanned QR token.
      */
     public function resolve(string $token): JsonResponse
     {
@@ -36,6 +41,18 @@ class PublicQrController extends Controller
             ], 404);
         }
 
+        if ($qrCode->table->status !== TableStatus::ACTIVE) {
+            return response()->json([
+                'message' => 'Meja saat ini sedang tidak aktif atau tidak tersedia.',
+            ], 422);
+        }
+
+        if ($qrCode->store->status !== CommonStatus::ACTIVE) {
+            return response()->json([
+                'message' => 'Outlet/Toko saat ini sedang tidak beroperasi.',
+            ], 422);
+        }
+
         $products = Product::withoutGlobalScope('store')
             ->where('store_id', $qrCode->store_id)
             ->where('status', 'ACTIVE')
@@ -43,13 +60,16 @@ class PublicQrController extends Controller
             ->orderBy('name', 'asc')
             ->get();
 
-        $activeOrder = \App\Modules\PosOrder\Models\Order::withoutGlobalScope('store')
+        $activeOrder = Order::withoutGlobalScope('store')
             ->where('store_id', $qrCode->store_id)
             ->where('table_id', $qrCode->table_id)
             ->whereIn('status', ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'])
             ->with(['orderItems.product'])
             ->latest()
             ->first();
+
+        $taxPct = (float) $this->settingService->get('tax_percentage', $qrCode->store_id, $qrCode->store->tenant_id, 0);
+        $servicePct = (float) $this->settingService->get('service_charge_percentage', $qrCode->store_id, $qrCode->store->tenant_id, 0);
 
         return response()->json([
             'message' => 'QR code resolved successfully.',
@@ -65,6 +85,10 @@ class PublicQrController extends Controller
                     'name' => $qrCode->table->name,
                     'code' => $qrCode->table->code,
                     'capacity' => $qrCode->table->capacity,
+                ],
+                'settings' => [
+                    'tax_percentage' => $taxPct,
+                    'service_charge_percentage' => $servicePct,
                 ],
                 'active_order' => $activeOrder,
                 'products' => $products,

@@ -24,6 +24,10 @@ class RequirePermission
             return $this->unauthorized('Unauthenticated.');
         }
 
+        if (!$user->is_active) {
+            return $this->unauthorized('User account has been deactivated.');
+        }
+
         if (empty($permissions)) {
             return $next($request);
         }

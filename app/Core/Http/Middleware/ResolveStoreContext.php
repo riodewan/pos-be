@@ -4,6 +4,7 @@ namespace App\Core\Http\Middleware;
 
 use App\Core\Context\StoreContext;
 use App\Core\Context\TenantContext;
+use App\Core\Enums\CommonStatus;
 use App\Core\Traits\ApiResponse;
 use App\Modules\Rbac\Models\UserRole;
 use App\Modules\Tenant\Models\Store;
@@ -67,6 +68,10 @@ class ResolveStoreContext
         // Authorization check if user is authenticated
         $user = $request->user();
         if ($user) {
+            if (!$user->is_active) {
+                return $this->unauthorized('User account has been deactivated.');
+            }
+
             if (!$user->belongsToTenant($store->tenant_id)) {
                 return $this->forbidden('You do not have access to this tenant.');
             }
@@ -74,6 +79,15 @@ class ResolveStoreContext
             if (!$user->hasAccessToStore($store->id, $store->tenant_id)) {
                 return $this->forbidden('You do not have access to this store.');
             }
+        }
+
+        // Enforce active store status (internal admin is exempt)
+        $storeStatus = $store->status instanceof CommonStatus
+            ? $store->status->value
+            : (is_string($store->status) ? $store->status : 'ACTIVE');
+
+        if ($storeStatus !== 'ACTIVE' && (!$user || !$user->isInternalAdmin())) {
+            return $this->forbidden('This store is currently inactive.');
         }
 
         // Bind to store context

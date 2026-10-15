@@ -23,6 +23,10 @@ class EnsureInternalAdmin
             return $this->unauthorized('Unauthenticated.');
         }
 
+        if (!$user->is_active) {
+            return $this->unauthorized('User account has been deactivated.');
+        }
+
         if (!$user->isInternalAdmin()) {
             return $this->forbidden('Access restricted to internal platform administrators only.');
         }

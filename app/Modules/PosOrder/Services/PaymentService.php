@@ -45,6 +45,10 @@ class PaymentService
             throw new InvalidArgumentException('Cannot process payment for a cancelled order.');
         }
 
+        if ($order->status === OrderStatus::COMPLETED) {
+            throw new InvalidArgumentException('Cannot process payment for an already completed order.');
+        }
+
         return DB::transaction(function () use ($order, $data, $storeId, $userId) {
             // Lock order for update
             $lockedOrder = Order::withoutGlobalScope('store')
@@ -128,7 +132,7 @@ class PaymentService
                             'id' => (string) Str::ulid(),
                             'store_id' => $storeId,
                             'ingredient_id' => $recipeItem->ingredient_id,
-                            'unit_id' => $recipeItem->unit_id,
+                            'unit_id' => $recipeItem->unit_id ?? $recipeItem->ingredient?->unit_id,
                             'type' => MovementType::SALE,
                             'quantity' => -1 * $deductQty,
                             'reference_type' => 'ORDER',

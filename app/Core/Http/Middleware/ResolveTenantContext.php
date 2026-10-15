@@ -47,8 +47,23 @@ class ResolveTenantContext
 
         // Authorization check if user is authenticated
         $user = $request->user();
-        if ($user && !$user->belongsToTenant($tenant->id)) {
-            return $this->forbidden('You do not have access to this tenant.');
+        if ($user) {
+            if (!$user->is_active) {
+                return $this->unauthorized('User account has been deactivated.');
+            }
+
+            if (!$user->belongsToTenant($tenant->id)) {
+                return $this->forbidden('You do not have access to this tenant.');
+            }
+        }
+
+        // Enforce active tenant status (internal admin is exempt)
+        $tenantStatus = $tenant->status instanceof \App\Core\Enums\TenantStatus 
+            ? $tenant->status->value 
+            : (is_string($tenant->status) ? $tenant->status : 'ACTIVE');
+
+        if ($tenantStatus !== 'ACTIVE' && (!$user || !$user->isInternalAdmin())) {
+            return $this->forbidden('This tenant account is currently suspended or inactive.');
         }
 
         // Bind to context

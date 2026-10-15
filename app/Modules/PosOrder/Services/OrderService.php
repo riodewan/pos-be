@@ -3,10 +3,12 @@
 namespace App\Modules\PosOrder\Services;
 
 use App\Core\Context\AppContext;
+use App\Core\Enums\CommonStatus;
 use App\Core\Enums\OrderSource;
 use App\Core\Enums\OrderStatus;
 use App\Core\Enums\PaymentStatus;
 use App\Core\Enums\QrStatus;
+use App\Core\Enums\TableStatus;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\PosOrder\Models\Order;
 use App\Modules\PosOrder\Models\OrderItem;
@@ -53,7 +55,7 @@ class OrderService
     {
         $storeId = AppContext::storeId();
 
-        // Cross-store validation: Table (if provided) must belong to current store
+        // Cross-store validation: Table (if provided) must belong to current store and be ACTIVE
         if (!empty($data['table_id'])) {
             $table = Table::withoutGlobalScope('store')
                 ->where('id', $data['table_id'])
@@ -64,19 +66,24 @@ class OrderService
             if (!$table) {
                 throw new InvalidArgumentException('The selected table does not belong to the current store.');
             }
+
+            if ($table->status !== TableStatus::ACTIVE) {
+                throw new InvalidArgumentException('The selected table is currently inactive or unavailable.');
+            }
         }
 
-        // Cross-store validation: All products must belong to current store
+        // Cross-store validation: All products must belong to current store and be ACTIVE
         $productIds = collect($data['items'])->pluck('product_id')->unique()->all();
         $products = Product::withoutGlobalScope('store')
             ->whereIn('id', $productIds)
             ->where('store_id', $storeId)
+            ->where('status', CommonStatus::ACTIVE)
             ->whereNull('deleted_at')
             ->get()
             ->keyBy('id');
 
         if ($products->count() !== count($productIds)) {
-            throw new InvalidArgumentException('One or more selected products do not belong to the current store.');
+            throw new InvalidArgumentException('One or more selected products are invalid, inactive, or do not belong to the current store.');
         }
 
         return DB::transaction(function () use ($data, $storeId, $userId, $products) {
@@ -150,10 +157,19 @@ class OrderService
             ->where('token', $qrToken)
             ->where('status', QrStatus::ACTIVE)
             ->whereNull('deleted_at')
+            ->with(['table', 'store'])
             ->first();
 
-        if (!$qrCode) {
+        if (!$qrCode || !$qrCode->table || !$qrCode->store) {
             throw new InvalidArgumentException('Invalid or inactive QR code.');
+        }
+
+        if ($qrCode->table->status !== TableStatus::ACTIVE) {
+            throw new InvalidArgumentException('Meja saat ini sedang tidak aktif atau tidak tersedia.');
+        }
+
+        if ($qrCode->store->status !== CommonStatus::ACTIVE) {
+            throw new InvalidArgumentException('Outlet/Toko saat ini sedang tidak beroperasi.');
         }
 
         $storeId = $qrCode->store_id;

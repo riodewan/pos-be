@@ -24,6 +24,10 @@ class RequireRole
             return $this->unauthorized('Unauthenticated.');
         }
 
+        if (!$user->is_active) {
+            return $this->unauthorized('User account has been deactivated.');
+        }
+
         if (empty($roles)) {
             return $next($request);
         }
