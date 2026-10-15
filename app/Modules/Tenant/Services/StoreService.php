@@ -3,6 +3,7 @@
 namespace App\Modules\Tenant\Services;
 
 use App\Core\Enums\CommonStatus;
+use App\Modules\Auth\Models\User;
 use App\Modules\Tenant\Models\Store;
 use App\Modules\Tenant\Models\Tenant;
 use Illuminate\Database\Eloquent\Collection;
@@ -12,13 +13,23 @@ use InvalidArgumentException;
 class StoreService
 {
     /**
-     * List all stores belonging to tenant.
+     * List all stores belonging to tenant, scoped to user access if restricted.
      */
-    public function listStores(Tenant $tenant): Collection
+    public function listStores(Tenant $tenant, ?User $user = null): Collection
     {
-        return Store::where('tenant_id', $tenant->id)
-            ->orderBy('created_at', 'asc')
-            ->get();
+        $query = Store::where('tenant_id', $tenant->id);
+
+        if ($user && !$user->isInternalAdmin()) {
+            $userRoles = $user->userRoles()->where('tenant_id', $tenant->id)->get();
+            $storeIds = $userRoles->pluck('store_id')->filter()->unique();
+            $hasTenantWideRole = $userRoles->contains(fn ($r) => is_null($r->store_id));
+
+            if (!$hasTenantWideRole && $storeIds->isNotEmpty()) {
+                $query->whereIn('id', $storeIds);
+            }
+        }
+
+        return $query->orderBy('created_at', 'asc')->get();
     }
 
     /**

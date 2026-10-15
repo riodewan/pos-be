@@ -100,9 +100,6 @@ class RbacService
                     $q->whereNull('store_id')
                       ->orWhere('store_id', $storeId);
                 });
-            }, function ($query) {
-                // If no store context, only tenant-wide roles apply
-                $query->whereNull('store_id');
             })
             ->with('role.permissions')
             ->get();
@@ -157,8 +154,6 @@ class RbacService
                     $q->whereNull('store_id')
                       ->orWhere('store_id', $storeId);
                 });
-            }, function ($query) {
-                $query->whereNull('store_id');
             })
             ->whereHas('role', function ($q) use ($roleNames) {
                 $q->whereIn('name', $roleNames);
@@ -187,6 +182,7 @@ class RbacService
             'Inventory' => [
                 'description' => 'Inventory staff managing stock, purchasing, wastage, and suppliers.',
                 'permissions' => [
+                    'store.view',
                     'inventory.view', 'inventory.adjust', 'inventory.movement',
                     'purchase.view', 'purchase.create', 'purchase.update', 'purchase.receive', 'purchase.cancel',
                     'wastage.view', 'wastage.create', 'wastage.approve',
@@ -198,6 +194,7 @@ class RbacService
             'Cashier' => [
                 'description' => 'POS Cashier handling orders, tables, and payments.',
                 'permissions' => [
+                    'store.view',
                     'order.view', 'order.create', 'order.update', 'order.cancel',
                     'payment.view', 'payment.process',
                     'table.view', 'table.update',

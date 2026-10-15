@@ -10,6 +10,7 @@ use App\Modules\Tenant\Http\Requests\UpdateStoreRequest;
 use App\Modules\Tenant\Http\Resources\StoreResource;
 use App\Modules\Tenant\Services\StoreService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,10 +25,10 @@ class StoreController extends Controller
     /**
      * List all stores for current tenant.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $tenant = AppContext::tenant();
-        $stores = $this->storeService->listStores($tenant);
+        $stores = $this->storeService->listStores($tenant, $request->user());
 
         return $this->success(StoreResource::collection($stores));
     }
