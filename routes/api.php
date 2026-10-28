@@ -302,6 +302,11 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::get('/cashiers', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'cashierShift'])
             ->middleware('permission:report.financial');
         Route::get('/reconciliation', [\App\Modules\Reporting\Http\Controllers\FinanceReconciliationController::class, 'summary']);
+        Route::get('/disbursements', [\App\Modules\Reporting\Http\Controllers\DisbursementController::class, 'index']);
+        Route::post('/disbursements', [\App\Modules\Reporting\Http\Controllers\DisbursementController::class, 'store']);
+        Route::get('/cash-audits', [\App\Modules\Reporting\Http\Controllers\CashShiftAuditController::class, 'index']);
+        Route::post('/cash-audits', [\App\Modules\Reporting\Http\Controllers\CashShiftAuditController::class, 'store']);
+        Route::put('/cash-audits/{id}', [\App\Modules\Reporting\Http\Controllers\CashShiftAuditController::class, 'update']);
     });
 });
 

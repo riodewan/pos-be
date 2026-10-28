@@ -15,7 +15,7 @@ class FinanceReconciliationController extends Controller
         $startDate = $request->query('start_date', now()->startOfMonth()->toDateString());
         $endDate = $request->query('end_date', now()->toDateString());
 
-        $paymentsQuery = Payment::with('order')
+        $paymentsQuery = Payment::with('order')->whereHas('order')
             ->where('status', 'SUCCESS')
             ->whereDate('paid_at', '>=', $startDate)
             ->whereDate('paid_at', '<=', $endDate);
