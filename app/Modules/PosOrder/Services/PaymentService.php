@@ -16,6 +16,7 @@ use App\Modules\PosOrder\Models\Order;
 use App\Modules\PosOrder\Models\Payment;
 use App\Modules\PosOrder\Models\Table;
 use App\Modules\RecipeMenu\Models\Recipe;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -160,5 +161,41 @@ class PaymentService
 
             return $payment->load('order');
         });
+    }
+
+    /**
+     * List payments / financial transactions with filtering and pagination.
+     */
+    public function listTransactions(
+        ?string $status = null,
+        ?string $method = null,
+        ?string $search = null,
+        ?string $startDate = null,
+        ?string $endDate = null,
+        int $perPage = 20
+    ): LengthAwarePaginator {
+        $storeId = AppContext::storeId();
+
+        return Payment::with(['order.table', 'order.orderItems.product', 'order.createdBy', 'order.store'])
+            ->when($storeId, function ($q) use ($storeId) {
+                $q->whereHas('order', fn ($sub) => $sub->where('store_id', $storeId));
+            })
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($method, fn ($q) => $q->where('method', $method))
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('payment_number', 'ILIKE', "%{$search}%")
+                        ->orWhere('provider_reference', 'ILIKE', "%{$search}%")
+                        ->orWhereHas('order', function ($oq) use ($search) {
+                            $oq->where('order_number', 'ILIKE', "%{$search}%")
+                                ->orWhere('customer_name', 'ILIKE', "%{$search}%")
+                                ->orWhere('customer_phone', 'ILIKE', "%{$search}%");
+                        });
+                });
+            })
+            ->when($startDate, fn ($q) => $q->whereDate('paid_at', '>=', $startDate))
+            ->when($endDate, fn ($q) => $q->whereDate('paid_at', '<=', $endDate))
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
     }
 }

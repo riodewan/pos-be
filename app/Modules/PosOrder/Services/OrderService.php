@@ -30,12 +30,27 @@ class OrderService
         ?string $status = null,
         ?string $tableId = null,
         ?string $source = null,
+        ?string $channel = null,
+        ?string $search = null,
+        ?string $startDate = null,
+        ?string $endDate = null,
         int $perPage = 20
     ): LengthAwarePaginator {
         return Order::with(['table', 'orderItems.product', 'payments', 'createdBy'])
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($tableId, fn ($q) => $q->where('table_id', $tableId))
             ->when($source, fn ($q) => $q->where('source', $source))
+            ->when($channel, fn ($q) => $q->where('channel', $channel))
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('order_number', 'ILIKE', "%{$search}%")
+                        ->orWhere('customer_name', 'ILIKE', "%{$search}%")
+                        ->orWhere('customer_phone', 'ILIKE', "%{$search}%")
+                        ->orWhereHas('table', fn ($t) => $t->where('name', 'ILIKE', "%{$search}%"));
+                });
+            })
+            ->when($startDate, fn ($q) => $q->whereDate('created_at', '>=', $startDate))
+            ->when($endDate, fn ($q) => $q->whereDate('created_at', '<=', $endDate))
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
     }

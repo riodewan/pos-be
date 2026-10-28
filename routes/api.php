@@ -269,11 +269,13 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::post('/orders/{id}/cancel', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'cancel'])
             ->middleware('permission:order.cancel');
 
-        // Payments
+        // Payments & Transactions
         Route::get('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'index'])
             ->middleware('permission:payment.view');
         Route::post('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'store'])
             ->middleware('permission:payment.process');
+        Route::get('/transactions', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'listTransactions'])
+            ->middleware('permission:payment.view');
 
         // Reservations
         Route::get('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'index']);

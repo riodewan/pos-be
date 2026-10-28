@@ -52,4 +52,27 @@ class PaymentController extends Controller
             ], 422);
         }
     }
+
+    public function listTransactions(Request $request): JsonResponse
+    {
+        $transactions = $this->paymentService->listTransactions(
+            status: $request->query('status'),
+            method: $request->query('method'),
+            search: $request->query('search'),
+            startDate: $request->query('start_date'),
+            endDate: $request->query('end_date'),
+            perPage: (int) $request->query('per_page', 20)
+        );
+
+        return response()->json([
+            'message' => 'Transactions retrieved successfully.',
+            'data' => $transactions->items(),
+            'pagination' => [
+                'current_page' => $transactions->currentPage(),
+                'per_page' => $transactions->perPage(),
+                'total' => $transactions->total(),
+                'last_page' => $transactions->lastPage(),
+            ],
+        ]);
+    }
 }

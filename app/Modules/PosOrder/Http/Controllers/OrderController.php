@@ -24,6 +24,10 @@ class OrderController extends Controller
             status: $request->query('status'),
             tableId: $request->query('table_id'),
             source: $request->query('source'),
+            channel: $request->query('channel'),
+            search: $request->query('search'),
+            startDate: $request->query('start_date'),
+            endDate: $request->query('end_date'),
             perPage: (int) $request->query('per_page', 20)
         );
 
