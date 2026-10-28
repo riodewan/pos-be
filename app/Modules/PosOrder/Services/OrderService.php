@@ -124,6 +124,7 @@ class OrderService
                 'table_id' => $data['table_id'] ?? null,
                 'order_number' => $orderNumber,
                 'source' => $data['source'] ?? OrderSource::POS,
+                'channel' => $data['channel'] ?? 'DINE_IN',
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'status' => OrderStatus::PENDING,

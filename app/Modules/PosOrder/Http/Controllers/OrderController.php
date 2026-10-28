@@ -44,6 +44,7 @@ class OrderController extends Controller
         $validated = $request->validate([
             'table_id' => ['nullable', 'string'],
             'source' => ['nullable', Rule::enum(OrderSource::class)],
+            'channel' => ['nullable', 'string', Rule::in(['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'QR_ORDER'])],
             'customer_name' => ['nullable', 'string', 'max:100'],
             'customer_phone' => ['nullable', 'string', 'max:20'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
