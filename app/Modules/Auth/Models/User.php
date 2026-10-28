@@ -33,6 +33,11 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'avatar_url',
+        'phone',
+        'job_title',
+        'notification_preferences',
+        'user_preferences',
         'is_internal',
         'is_active',
         'email_verified_at',
@@ -48,9 +53,21 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notification_preferences' => 'array',
+            'user_preferences' => 'array',
             'is_internal' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function loginActivities(): HasMany
+    {
+        return $this->hasMany(UserLoginActivity::class, 'user_id');
+    }
+
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(\App\Modules\System\Models\Notification::class, 'user_id');
     }
 
     public function tenantUsers(): HasMany

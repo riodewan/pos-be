@@ -43,12 +43,29 @@ class Store extends Model
         'phone',
         'timezone',
         'status',
+        'logo_url',
+        'thumbnail_url',
+        'category',
+        'description',
+        'email',
+        'website',
+        'maps_url',
+        'receipt_config',
+        'operating_hours',
+        'facilities',
+        'photos',
+        'operational_status',
+        'publication_status',
     ];
 
     protected function casts(): array
     {
         return [
             'status' => CommonStatus::class,
+            'receipt_config' => 'array',
+            'operating_hours' => 'array',
+            'facilities' => 'array',
+            'photos' => 'array',
         ];
     }
 
@@ -130,5 +147,25 @@ class Store extends Model
     public function settings(): HasMany
     {
         return $this->hasMany(Setting::class, 'store_id');
+    }
+
+    public function reservations(): HasMany
+    {
+        return $this->hasMany(\App\Modules\PosOrder\Models\Reservation::class, 'store_id');
+    }
+
+    public function taxesFees(): HasMany
+    {
+        return $this->hasMany(StoreTaxFee::class, 'store_id');
+    }
+
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(StorePaymentMethod::class, 'store_id');
+    }
+
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(\App\Modules\System\Models\Notification::class, 'store_id');
     }
 }

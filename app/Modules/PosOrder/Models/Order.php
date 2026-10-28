@@ -26,13 +26,16 @@ class Order extends Model
     protected $fillable = [
         'store_id',
         'table_id',
+        'customer_id',
         'order_number',
         'source',
+        'channel',
         'customer_name',
         'customer_phone',
         'status',
         'subtotal',
         'discount_amount',
+        'discount_reason',
         'tax_amount',
         'service_charge',
         'total_amount',
@@ -61,6 +64,11 @@ class Order extends Model
     public function table(): BelongsTo
     {
         return $this->belongsTo(Table::class, 'table_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Customer\Models\Customer::class, 'customer_id');
     }
 
     public function createdBy(): BelongsTo

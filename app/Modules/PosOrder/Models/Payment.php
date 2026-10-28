@@ -25,6 +25,9 @@ class Payment extends Model
         'provider',
         'provider_reference',
         'amount',
+        'mdr_fee',
+        'net_amount',
+        'settlement_status',
         'status',
         'paid_at',
         'metadata',
@@ -36,6 +39,8 @@ class Payment extends Model
             'method' => PaymentMethod::class,
             'status' => PaymentStatus::class,
             'amount' => 'decimal:2',
+            'mdr_fee' => 'decimal:2',
+            'net_amount' => 'decimal:2',
             'paid_at' => 'datetime',
             'metadata' => 'array',
         ];

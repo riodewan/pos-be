@@ -10,6 +10,12 @@ Route::prefix('auth')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/me', [AuthController::class, 'me'])->name('auth.me');
+
+        // Account Profile & Security
+        Route::get('/account/profile', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'profile']);
+        Route::put('/account/profile', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'updateProfile']);
+        Route::put('/account/password', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'updatePassword']);
+        Route::get('/account/login-activities', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'loginActivities']);
     });
 });
 
@@ -54,6 +60,18 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
     // Tenant Roles
     Route::get('/roles', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'index'])
         ->middleware('permission:role.view');
+
+    // Customers (CRM & Loyalty)
+    Route::get('/customers', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'index']);
+    Route::post('/customers', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'store']);
+    Route::get('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'show']);
+    Route::put('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'update']);
+    Route::delete('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'destroy']);
+
+    // Notifications
+    Route::get('/notifications', [\App\Modules\System\Http\Controllers\NotificationController::class, 'index']);
+    Route::patch('/notifications/{id}/read', [\App\Modules\System\Http\Controllers\NotificationController::class, 'markRead']);
+    Route::post('/notifications/mark-all-read', [\App\Modules\System\Http\Controllers\NotificationController::class, 'markAllRead']);
 });
 
 /*
@@ -141,6 +159,25 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->prefix('
 |
 */
 Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(function () {
+    // Store Outlet Profile, Taxes & Fees, & Payment Methods
+    Route::prefix('store')->group(function () {
+        Route::get('/profile', [\App\Modules\Tenant\Http\Controllers\OutletProfileController::class, 'show']);
+        Route::put('/profile', [\App\Modules\Tenant\Http\Controllers\OutletProfileController::class, 'update']);
+
+        Route::get('/taxes-fees', [\App\Modules\Tenant\Http\Controllers\TaxFeeController::class, 'index']);
+        Route::post('/taxes-fees', [\App\Modules\Tenant\Http\Controllers\TaxFeeController::class, 'store']);
+        Route::put('/taxes-fees/{id}', [\App\Modules\Tenant\Http\Controllers\TaxFeeController::class, 'update']);
+        Route::patch('/taxes-fees/{id}/toggle', [\App\Modules\Tenant\Http\Controllers\TaxFeeController::class, 'toggle']);
+        Route::delete('/taxes-fees/{id}', [\App\Modules\Tenant\Http\Controllers\TaxFeeController::class, 'destroy']);
+
+        Route::get('/payment-methods', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'index']);
+        Route::post('/payment-methods', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'store']);
+        Route::put('/payment-methods/{id}', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'update']);
+        Route::patch('/payment-methods/{id}/toggle', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'toggle']);
+        Route::post('/payment-methods/reorder', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'reorder']);
+        Route::delete('/payment-methods/{id}', [\App\Modules\Tenant\Http\Controllers\PaymentMethodController::class, 'destroy']);
+    });
+
     // Recipes
     Route::prefix('recipes')->group(function () {
         Route::get('/', [\App\Modules\RecipeMenu\Http\Controllers\RecipeController::class, 'index'])
@@ -237,6 +274,17 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
             ->middleware('permission:payment.view');
         Route::post('/orders/{id}/payments', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'store'])
             ->middleware('permission:payment.process');
+
+        // Reservations
+        Route::get('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'index']);
+        Route::post('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'store']);
+        Route::get('/reservations/{id}', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'show']);
+        Route::put('/reservations/{id}/status', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'updateStatus']);
+        Route::delete('/reservations/{id}', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'destroy']);
+
+        // Kitchen Display System (KDS)
+        Route::get('/kds/queue', [\App\Modules\PosOrder\Http\Controllers\KdsController::class, 'queue']);
+        Route::put('/kds/orders/{id}/status', [\App\Modules\PosOrder\Http\Controllers\KdsController::class, 'updateStatus']);
     });
 
     // Sales Reporting & Dashboard
@@ -253,6 +301,7 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
             ->middleware('permission:report.inventory');
         Route::get('/cashiers', [\App\Modules\Reporting\Http\Controllers\ReportController::class, 'cashierShift'])
             ->middleware('permission:report.financial');
+        Route::get('/reconciliation', [\App\Modules\Reporting\Http\Controllers\FinanceReconciliationController::class, 'summary']);
     });
 });
 

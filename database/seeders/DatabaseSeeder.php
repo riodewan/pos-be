@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             RbacSeeder::class,
             SuperAdminSeeder::class,
             DemoTenantSeeder::class,
+            DemoOutletSeeder::class,
         ]);
     }
 }
