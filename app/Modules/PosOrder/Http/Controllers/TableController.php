@@ -34,6 +34,11 @@ class TableController extends Controller
             'code' => ['required', 'string', 'max:20'],
             'capacity' => ['nullable', 'integer', 'min:1'],
             'status' => ['nullable', Rule::enum(TableStatus::class)],
+            'area' => ['nullable', 'string', 'max:50'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'table_number' => ['nullable', 'integer', 'min:1'],
+            'operational_status' => ['nullable', 'string', 'max:30'],
+            'notes' => ['nullable', 'string'],
         ]);
 
         try {
@@ -69,6 +74,11 @@ class TableController extends Controller
             'code' => ['sometimes', 'string', 'max:20'],
             'capacity' => ['nullable', 'integer', 'min:1'],
             'status' => ['sometimes', Rule::enum(TableStatus::class)],
+            'area' => ['nullable', 'string', 'max:50'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'table_number' => ['nullable', 'integer', 'min:1'],
+            'operational_status' => ['nullable', 'string', 'max:30'],
+            'notes' => ['nullable', 'string'],
         ]);
 
         try {

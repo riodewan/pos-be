@@ -27,6 +27,13 @@ class Customer extends Model
         'phone',
         'email',
         'tier',
+        'status',
+        'segmentation',
+        'gender',
+        'birth_date',
+        'notes',
+        'address',
+        'avatar_url',
         'points',
         'total_spent',
         'total_visits',
@@ -40,6 +47,7 @@ class Customer extends Model
             'total_spent' => 'decimal:2',
             'total_visits' => 'integer',
             'last_visit_at' => 'datetime',
+            'birth_date' => 'date',
         ];
     }
 

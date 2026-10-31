@@ -54,7 +54,14 @@ class CustomerController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'max:100'],
-            'tier' => ['nullable', 'string', 'in:Bronze,Silver,Gold'],
+            'tier' => ['nullable', 'string', 'max:30'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'segmentation' => ['nullable', 'string', 'max:50'],
+            'gender' => ['nullable', 'string', 'max:20'],
+            'birth_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string'],
+            'address' => ['nullable', 'string'],
+            'avatar_url' => ['nullable', 'string', 'max:500'],
             'points' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -64,6 +71,13 @@ class CustomerController extends Controller
             'phone' => $validated['phone'] ?? null,
             'email' => $validated['email'] ?? null,
             'tier' => $validated['tier'] ?? 'Bronze',
+            'status' => $validated['status'] ?? 'Aktif',
+            'segmentation' => $validated['segmentation'] ?? 'Reguler',
+            'gender' => $validated['gender'] ?? null,
+            'birth_date' => $validated['birth_date'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'address' => $validated['address'] ?? null,
+            'avatar_url' => $validated['avatar_url'] ?? null,
             'points' => $validated['points'] ?? 0,
             'total_spent' => 0,
             'total_visits' => 0,
@@ -95,7 +109,14 @@ class CustomerController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:100'],
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'max:100'],
-            'tier' => ['nullable', 'string', 'in:Bronze,Silver,Gold'],
+            'tier' => ['nullable', 'string', 'max:30'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'segmentation' => ['nullable', 'string', 'max:50'],
+            'gender' => ['nullable', 'string', 'max:20'],
+            'birth_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string'],
+            'address' => ['nullable', 'string'],
+            'avatar_url' => ['nullable', 'string', 'max:500'],
             'points' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -103,6 +124,18 @@ class CustomerController extends Controller
 
         return response()->json([
             'message' => 'Customer updated successfully.',
+            'data' => $customer,
+        ]);
+    }
+
+    public function toggleStatus(string $id): JsonResponse
+    {
+        $customer = Customer::findOrFail($id);
+        $nextStatus = ($customer->status === 'Aktif' || $customer->status === 'ACTIVE') ? 'Nonaktif' : 'Aktif';
+        $customer->update(['status' => $nextStatus]);
+
+        return response()->json([
+            'message' => "Customer status changed to {$nextStatus}.",
             'data' => $customer,
         ]);
     }

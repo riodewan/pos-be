@@ -66,6 +66,7 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
     Route::post('/customers', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'store']);
     Route::get('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'show']);
     Route::put('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'update']);
+    Route::patch('/customers/{id}/toggle', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'toggleStatus']);
     Route::delete('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'destroy']);
 
     // Notifications

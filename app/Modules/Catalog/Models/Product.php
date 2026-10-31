@@ -32,12 +32,16 @@ class Product extends Model
         'image_url',
         'selling_price',
         'status',
+        'category',
+        'type',
+        'cost_price',
     ];
 
     protected function casts(): array
     {
         return [
             'selling_price' => 'decimal:2',
+            'cost_price' => 'decimal:2',
             'status' => CommonStatus::class,
         ];
     }

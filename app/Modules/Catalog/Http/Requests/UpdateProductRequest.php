@@ -36,6 +36,9 @@ class UpdateProductRequest extends FormRequest
             'image_url' => ['nullable', 'string', 'max:500'],
             'selling_price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'status' => ['nullable', new Enum(CommonStatus::class)],
+            'category' => ['nullable', 'string', 'max:100'],
+            'type' => ['nullable', 'string', 'max:50'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }

@@ -32,12 +32,26 @@ class Ingredient extends Model
         'name',
         'sku',
         'status',
+        'category',
+        'cost_price',
+        'min_stock',
+        'description',
+        'image_url',
+        'supplier_id',
+        'storage_location',
+        'shelf_life_value',
+        'shelf_life_unit',
+        'expiry_date',
     ];
 
     protected function casts(): array
     {
         return [
             'status' => CommonStatus::class,
+            'cost_price' => 'decimal:2',
+            'min_stock' => 'decimal:4',
+            'shelf_life_value' => 'integer',
+            'expiry_date' => 'date',
         ];
     }
 
@@ -49,6 +63,11 @@ class Ingredient extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
     public function recipeItems(): HasMany

@@ -48,6 +48,12 @@ class TableService
             $table->active_orders_count = $activeOrders->count();
             $table->current_order_id = $hasActiveOrders ? $activeOrders->first()->id : null;
 
+            if ($hasActiveOrders) {
+                $table->operational_status = 'Terisi';
+            } elseif (!$table->operational_status || $table->operational_status === 'Terisi') {
+                $table->operational_status = 'Kosong';
+            }
+
             return $table;
         });
     }
@@ -103,6 +109,11 @@ class TableService
                 'code' => $data['code'],
                 'capacity' => $data['capacity'] ?? null,
                 'status' => $data['status'] ?? TableStatus::ACTIVE,
+                'area' => $data['area'] ?? 'Indoor',
+                'category' => $data['category'] ?? 'Meja Standar (2-4 Orang)',
+                'table_number' => $data['table_number'] ?? null,
+                'operational_status' => $data['operational_status'] ?? 'Kosong',
+                'notes' => $data['notes'] ?? null,
             ]);
 
             // Auto-generate initial QR code
@@ -135,6 +146,11 @@ class TableService
             'code' => $data['code'] ?? $table->code,
             'capacity' => array_key_exists('capacity', $data) ? $data['capacity'] : $table->capacity,
             'status' => $data['status'] ?? $table->status,
+            'area' => $data['area'] ?? $table->area,
+            'category' => $data['category'] ?? $table->category,
+            'table_number' => array_key_exists('table_number', $data) ? $data['table_number'] : $table->table_number,
+            'operational_status' => $data['operational_status'] ?? $table->operational_status,
+            'notes' => array_key_exists('notes', $data) ? $data['notes'] : $table->notes,
         ]);
 
         return $table->fresh(['activeQrCode']);

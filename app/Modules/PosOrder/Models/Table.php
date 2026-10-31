@@ -28,12 +28,18 @@ class Table extends Model
         'code',
         'capacity',
         'status',
+        'area',
+        'category',
+        'table_number',
+        'operational_status',
+        'notes',
     ];
 
     protected function casts(): array
     {
         return [
             'capacity' => 'integer',
+            'table_number' => 'integer',
             'status' => TableStatus::class,
         ];
     }
