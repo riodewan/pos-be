@@ -12,6 +12,23 @@ use Illuminate\Support\Facades\DB;
 class ReportService
 {
     /**
+     * Scope query to store, or tenant if store not set.
+     */
+    protected function scopeStoreOrTenant($query, string $storeColumn = 'store_id')
+    {
+        $storeId = AppContext::storeId();
+        $tenantId = AppContext::tenantId();
+
+        return $query
+            ->when($storeId, fn ($q) => $q->where($storeColumn, $storeId))
+            ->when(!$storeId && $tenantId, function ($q) use ($tenantId, $storeColumn) {
+                $q->whereIn($storeColumn, function ($sub) use ($tenantId) {
+                    $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+                });
+            });
+    }
+
+    /**
      * Parse date range filters (default to current month if null).
      */
     protected function parseDateRange(?string $startDate = null, ?string $endDate = null): array
@@ -32,11 +49,12 @@ class ReportService
      */
     public function getSalesSummary(?string $startDate = null, ?string $endDate = null): array
     {
-        $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $summary = DB::table('orders')
-            ->where('store_id', $storeId)
+        $query = DB::table('orders');
+        $this->scopeStoreOrTenant($query, 'store_id');
+
+        $summary = $query
             ->where('status', OrderStatus::COMPLETED->value)
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw('
@@ -81,11 +99,12 @@ class ReportService
      */
     public function getSalesTrend(?string $startDate = null, ?string $endDate = null): array
     {
-        $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $trend = DB::table('orders')
-            ->where('store_id', $storeId)
+        $query = DB::table('orders');
+        $this->scopeStoreOrTenant($query, 'store_id');
+
+        $trend = $query
             ->where('status', OrderStatus::COMPLETED->value)
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw("
@@ -115,12 +134,13 @@ class ReportService
      */
     public function getTopProducts(?string $startDate = null, ?string $endDate = null, int $limit = 10): array
     {
-        $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $products = DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->where('o.store_id', $storeId)
+        $query = DB::table('order_items as oi')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id');
+        $this->scopeStoreOrTenant($query, 'o.store_id');
+
+        $products = $query
             ->where('o.status', OrderStatus::COMPLETED->value)
             ->whereBetween('o.created_at', [$start, $end])
             ->selectRaw('
@@ -149,12 +169,13 @@ class ReportService
      */
     public function getPaymentMethodsBreakdown(?string $startDate = null, ?string $endDate = null): array
     {
-        $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $methods = DB::table('payments as p')
-            ->join('orders as o', 'o.id', '=', 'p.order_id')
-            ->where('o.store_id', $storeId)
+        $query = DB::table('payments as p')
+            ->join('orders as o', 'o.id', '=', 'p.order_id');
+        $this->scopeStoreOrTenant($query, 'o.store_id');
+
+        $methods = $query
             ->where('p.status', PaymentStatus::SUCCESS->value)
             ->whereBetween('p.paid_at', [$start, $end])
             ->selectRaw('
@@ -286,21 +307,184 @@ class ReportService
     }
 
     /**
+     * Get Channel Distribution (Dine In, Takeaway, POS, QR, Delivery).
+     */
+    public function getChannelDistribution(?string $startDate = null, ?string $endDate = null): array
+    {
+        [$start, $end] = $this->parseDateRange($startDate, $endDate);
+
+        $query = DB::table('orders');
+        $this->scopeStoreOrTenant($query, 'store_id');
+        $channels = $query
+            ->where('status', OrderStatus::COMPLETED->value)
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw("
+                COALESCE(channel, source) as channel_name,
+                COUNT(id) as count,
+                COALESCE(SUM(total_amount), 0) as total_amount
+            ")
+            ->groupBy('channel_name')
+            ->orderByDesc('count')
+            ->get();
+
+        $totalCount = $channels->sum('count');
+
+        return $channels->map(function ($row) use ($totalCount) {
+            $raw = strtoupper($row->channel_name ?? 'POS');
+            $name = match ($raw) {
+                'DINE_IN' => 'Dine In',
+                'TAKEAWAY' => 'Takeaway',
+                'POS' => 'Kasir (POS)',
+                'QR' => 'QR Order',
+                'DELIVERY' => 'Delivery',
+                default => $row->channel_name,
+            };
+            $color = match ($raw) {
+                'DINE_IN' => '#F59E0B',
+                'TAKEAWAY' => '#10B981',
+                'POS' => '#8B5CF6',
+                'QR' => '#2563EB',
+                'DELIVERY' => '#EC4899',
+                default => '#6B7280',
+            };
+
+            return [
+                'name' => $name,
+                'count' => (int) $row->count,
+                'total_amount' => (float) $row->total_amount,
+                'percentage' => $totalCount > 0 ? round(($row->count / $totalCount) * 100, 1) : 0,
+                'color' => $color,
+            ];
+        })->all();
+    }
+
+    /**
+     * Get Low Stock Ingredients.
+     */
+    public function getLowStocks(int $limit = 5): array
+    {
+        $query = DB::table('inventory_stocks as s')
+            ->join('ingredients as ing', 'ing.id', '=', 's.ingredient_id')
+            ->join('units as u', 'u.id', '=', 'ing.unit_id');
+        $this->scopeStoreOrTenant($query, 's.store_id');
+
+        $stocks = $query
+            ->selectRaw('
+                ing.id,
+                ing.name,
+                s.quantity as remaining,
+                ing.min_stock,
+                u.code as unit_code,
+                u.name as unit_name,
+                CASE
+                    WHEN s.quantity <= 0 THEN \'Habis\'
+                    WHEN s.quantity <= ing.min_stock THEN \'Sangat Rendah\'
+                    WHEN s.quantity <= (ing.min_stock * 2) THEN \'Menipis\'
+                    ELSE \'Aman\'
+                END as status,
+                CASE
+                    WHEN s.quantity <= ing.min_stock THEN true
+                    ELSE false
+                END as is_critical
+            ')
+            ->orderByRaw('CASE WHEN ing.min_stock > 0 THEN s.quantity / ing.min_stock ELSE s.quantity END ASC')
+            ->limit($limit)
+            ->get();
+
+        return $stocks->map(fn ($row) => [
+            'id' => $row->id,
+            'name' => $row->name,
+            'remaining' => (float) $row->remaining,
+            'unit_code' => $row->unit_code,
+            'unit_name' => $row->unit_name,
+            'min_stock' => (float) $row->min_stock,
+            'status' => $row->status,
+            'is_critical' => (bool) $row->is_critical,
+        ])->all();
+    }
+
+    /**
      * Unified Dashboard Payload.
      */
     public function getDashboardOverview(?string $startDate = null, ?string $endDate = null): array
     {
+        [$start, $end] = $this->parseDateRange($startDate, $endDate);
+
         $sales = $this->getSalesSummary($startDate, $endDate);
         $trend = $this->getSalesTrend($startDate, $endDate);
         $topProducts = $this->getTopProducts($startDate, $endDate, 5);
         $payments = $this->getPaymentMethodsBreakdown($startDate, $endDate);
+        $channels = $this->getChannelDistribution($startDate, $endDate);
+        $lowStocks = $this->getLowStocks(5);
+
+        // Calculate comparison with previous period
+        $durationDays = max(1, $start->diffInDays($end) + 1);
+        $prevStart = $start->copy()->subDays($durationDays);
+        $prevEnd = $start->copy()->subDay()->endOfDay();
+        $prevSales = $this->getSalesSummary($prevStart->toDateString(), $prevEnd->toDateString());
+
+        $currentRevenue = $sales['kpis']['total_revenue'];
+        $prevRevenue = $prevSales['kpis']['total_revenue'];
+        $salesGrowth = $prevRevenue > 0
+            ? round((($currentRevenue - $prevRevenue) / $prevRevenue) * 100, 1)
+            : ($currentRevenue > 0 ? 100.0 : 0.0);
+
+        $currentOrders = $sales['kpis']['total_orders'];
+        $prevOrders = $prevSales['kpis']['total_orders'];
+        $ordersGrowth = $prevOrders > 0
+            ? round((($currentOrders - $prevOrders) / $prevOrders) * 100, 1)
+            : ($currentOrders > 0 ? 100.0 : 0.0);
+
+        $currentAov = $sales['kpis']['average_order_value'];
+        $prevAov = $prevSales['kpis']['average_order_value'];
+        $aovGrowth = $prevAov > 0
+            ? round((($currentAov - $prevAov) / $prevAov) * 100, 1)
+            : 0.0;
+
+        $profitEstimate = max(0, $sales['kpis']['net_sales'] * 0.45);
+
+        // Today orders breakdown by status
+        $todayQuery = DB::table('orders');
+        $this->scopeStoreOrTenant($todayQuery, 'store_id');
+        $todayOrders = $todayQuery
+            ->whereDate('created_at', Carbon::today())
+            ->selectRaw('
+                status,
+                COUNT(id) as count
+            ')
+            ->groupBy('status')
+            ->get()
+            ->pluck('count', 'status');
+
+        $todayNew = (int) ($todayOrders[OrderStatus::PENDING->value] ?? 0);
+        $todayProcessing = (int) (($todayOrders[OrderStatus::CONFIRMED->value] ?? 0) + ($todayOrders[OrderStatus::PREPARING->value] ?? 0));
+        $todayReady = (int) ($todayOrders[OrderStatus::READY->value] ?? 0);
+        $todayCompleted = (int) ($todayOrders[OrderStatus::COMPLETED->value] ?? 0);
+        $todayCancelled = (int) ($todayOrders[OrderStatus::CANCELLED->value] ?? 0);
+        $todayTotal = $todayNew + $todayProcessing + $todayReady + $todayCompleted + $todayCancelled;
 
         return [
             'period' => $sales['period'],
-            'kpis' => $sales['kpis'],
+            'kpis' => array_merge($sales['kpis'], [
+                'estimated_profit' => $profitEstimate,
+                'sales_growth' => $salesGrowth,
+                'orders_growth' => $ordersGrowth,
+                'aov_growth' => $aovGrowth,
+                'profit_growth' => $salesGrowth,
+            ]),
             'sales_trend' => $trend,
             'top_products' => $topProducts,
             'payment_methods' => $payments,
+            'channels' => $channels,
+            'low_stocks' => $lowStocks,
+            'today_orders' => [
+                'total' => $todayTotal,
+                'new' => $todayNew,
+                'processing' => $todayProcessing,
+                'ready' => $todayReady,
+                'completed' => $todayCompleted,
+                'cancelled' => $todayCancelled,
+            ],
         ];
     }
 }
