@@ -71,7 +71,7 @@ class AuthService
             'user_agent' => $userAgent,
         ]);
 
-        $user->loadMissing(['tenants', 'userRoles.role']);
+        $user->loadMissing(['tenants', 'userRoles.role.permissions']);
 
         return [
             'user' => $user,
@@ -105,6 +105,6 @@ class AuthService
      */
     public function getProfile(User $user): User
     {
-        return $user->loadMissing(['tenants', 'userRoles.role']);
+        return $user->loadMissing(['tenants', 'userRoles.role.permissions']);
     }
 }

@@ -50,6 +50,22 @@ class UserResource extends JsonResource
                     'store_id' => $ur->store_id,
                 ]);
             }),
+
+            'permissions' => $this->whenLoaded('userRoles', function () {
+                if ($this->is_internal) {
+                    return \App\Modules\Rbac\Models\Permission::pluck('name')->all();
+                }
+
+                $perms = [];
+                foreach ($this->userRoles as $ur) {
+                    if ($ur->role && $ur->role->relationLoaded('permissions')) {
+                        foreach ($ur->role->permissions as $p) {
+                            $perms[$p->name] = true;
+                        }
+                    }
+                }
+                return array_keys($perms);
+            }),
         ];
     }
 }
