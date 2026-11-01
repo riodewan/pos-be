@@ -170,17 +170,28 @@ class RbacService
 
         $roleDefinitions = [
             'Owner' => [
-                'description' => 'Tenant Owner with full access to all tenant modules and stores.',
+                'description' => 'Akses penuh ke seluruh konfigurasi toko, data keuangan, laporan, dan staf.',
                 'permissions' => $allPermissions->keys()->all(),
             ],
             'Manager' => [
-                'description' => 'Store or Tenant Manager with operational access except billing and sensitive settings.',
+                'description' => 'Mengelola operasional harian outlet, inventori, stok, dan memantau pesanan.',
                 'permissions' => $allPermissions->keys()->reject(function ($name) {
                     return str_starts_with($name, 'tenant.delete') || str_starts_with($name, 'billing.');
                 })->values()->all(),
             ],
+            'Kasir' => [
+                'description' => 'Menjalankan kasir POS, menerima pesanan, dan mencetak struk pembayaran.',
+                'permissions' => [
+                    'store.view',
+                    'order.view', 'order.create', 'order.update', 'order.cancel',
+                    'payment.view', 'payment.process',
+                    'table.view', 'table.update',
+                    'qr.view', 'qr.generate',
+                    'product.view', 'menu.view',
+                ],
+            ],
             'Inventory' => [
-                'description' => 'Inventory staff managing stock, purchasing, wastage, and suppliers.',
+                'description' => 'Mengelola stok bahan baku, pembelian (PO), supplier, dan penyesuaian stok.',
                 'permissions' => [
                     'store.view',
                     'inventory.view', 'inventory.adjust', 'inventory.movement',
@@ -191,14 +202,13 @@ class RbacService
                     'product.view', 'recipe.view', 'unit.view',
                 ],
             ],
-            'Cashier' => [
-                'description' => 'POS Cashier handling orders, tables, and payments.',
+            'Dapur' => [
+                'description' => 'Akses Kitchen Display (KDS), melihat resep porsi, dan konfirmasi hidangan siap disajikan.',
                 'permissions' => [
                     'store.view',
-                    'order.view', 'order.create', 'order.update', 'order.cancel',
-                    'payment.view', 'payment.process',
-                    'table.view', 'table.update',
-                    'qr.view', 'qr.generate',
+                    'order.view', 'order.update',
+                    'recipe.view',
+                    'ingredient.view',
                     'product.view', 'menu.view',
                 ],
             ],

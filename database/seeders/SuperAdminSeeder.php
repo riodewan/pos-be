@@ -14,15 +14,27 @@ class SuperAdminSeeder extends Seeder
      */
     public function run(): void
     {
-        User::firstOrCreate(
-            ['email' => 'admin@pos.com'],
-            [
-                'id' => (string) Str::ulid(),
-                'name' => 'Platform Super Admin',
-                'password' => 'SuperAdmin123!',
+        $user = User::where('email', 'admin@pos.com')->first();
+        if ($user) {
+            $user->update([
+                'name' => 'Rio (Admin Internal)',
+                'password' => 'Password123!',
+                'phone' => '0812-0000-0001',
+                'job_title' => 'Platform Super Admin',
                 'is_internal' => true,
                 'is_active' => true,
-            ]
-        );
+            ]);
+        } else {
+            User::create([
+                'id' => (string) Str::ulid(),
+                'name' => 'Rio (Admin Internal)',
+                'email' => 'admin@pos.com',
+                'password' => 'Password123!',
+                'phone' => '0812-0000-0001',
+                'job_title' => 'Platform Super Admin',
+                'is_internal' => true,
+                'is_active' => true,
+            ]);
+        }
     }
 }

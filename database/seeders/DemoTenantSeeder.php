@@ -61,37 +61,62 @@ class DemoTenantSeeder extends Seeder
         // 3. Create Default Tenant Roles
         $roles = $rbacService->createDefaultTenantRoles($tenant);
 
-        // 4. Create Tenant Users
+        // 4. Create Tenant Users for Testing
         $users = [
             [
                 'email' => 'owner@kopinusantara.com',
                 'name' => 'Bambang Sudiro (Owner)',
+                'phone' => '0812-3456-7890',
+                'job_title' => 'Owner & Founder',
                 'password' => 'Password123!',
                 'role' => $roles['Owner'],
                 'store_id' => null, // Tenant-wide
             ],
             [
-                'email' => 'kasir@kopinusantara.com',
-                'name' => 'Lestari Putri (Kasir)',
+                'email' => 'manager@kopinusantara.com',
+                'name' => 'Dimas Pratama (Manager)',
+                'phone' => '0812-3456-7891',
+                'job_title' => 'Store & Operations Manager',
                 'password' => 'Password123!',
-                'role' => $roles['Cashier'],
-                'store_id' => $store->id, // Store-specific
+                'role' => $roles['Manager'],
+                'store_id' => $store->id,
             ],
             [
-                'email' => 'gudang@kopinusantara.com',
-                'name' => 'Ahmad Rian (Gudang & Logistik)',
+                'email' => 'kasir@kopinusantara.com',
+                'name' => 'Lestari Putri (Kasir)',
+                'phone' => '0812-3456-7892',
+                'job_title' => 'Head Cashier',
+                'password' => 'Password123!',
+                'role' => $roles['Kasir'],
+                'store_id' => $store->id,
+            ],
+            [
+                'email' => 'inventory@kopinusantara.com',
+                'name' => 'Ahmad Rian (Inventory & Stok)',
+                'phone' => '0812-3456-7893',
+                'job_title' => 'Staff Logistik & Gudang',
                 'password' => 'Password123!',
                 'role' => $roles['Inventory'],
                 'store_id' => null, // Tenant-wide
             ],
+            [
+                'email' => 'dapur@kopinusantara.com',
+                'name' => 'Chef Junaedi (Dapur & KDS)',
+                'phone' => '0812-3456-7894',
+                'job_title' => 'Head Kitchen & Barista',
+                'password' => 'Password123!',
+                'role' => $roles['Dapur'],
+                'store_id' => $store->id,
+            ],
         ];
 
         foreach ($users as $u) {
-            $user = User::firstOrCreate(
+            $user = User::updateOrCreate(
                 ['email' => $u['email']],
                 [
-                    'id' => (string) Str::ulid(),
                     'name' => $u['name'],
+                    'phone' => $u['phone'],
+                    'job_title' => $u['job_title'],
                     'password' => $u['password'],
                     'is_internal' => false,
                     'is_active' => true,
@@ -100,8 +125,13 @@ class DemoTenantSeeder extends Seeder
 
             TenantUser::firstOrCreate(
                 ['tenant_id' => $tenant->id, 'user_id' => $user->id],
-                ['id' => (string) Str::ulid()]
+                ['id' => (string) Str::ulid(), 'joined_at' => now()]
             );
+
+            // Re-assign role
+            \App\Modules\Rbac\Models\UserRole::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->delete();
 
             $rbacService->assignRole($user, $u['role'], $tenant->id, $u['store_id']);
         }
