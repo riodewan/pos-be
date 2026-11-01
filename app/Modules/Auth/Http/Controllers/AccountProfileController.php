@@ -28,17 +28,31 @@ class AccountProfileController extends Controller
             ->orderBy('logged_at', 'desc')
             ->first();
 
-        $defaultNotifications = [
-            'orders' => ['email' => true, 'inApp' => true],
-            'transactions' => ['email' => true, 'inApp' => true],
-            'reservations' => ['email' => true, 'inApp' => true],
-            'dailySummary' => ['email' => true, 'inApp' => true],
+        $rawNotifs = is_array($user->notification_preferences) ? $user->notification_preferences : [];
+        $notifications = [
+            'orders' => [
+                'email' => isset($rawNotifs['orders']['email']) ? (bool) $rawNotifs['orders']['email'] : (isset($rawNotifs['order_email']) ? (bool) $rawNotifs['order_email'] : true),
+                'inApp' => isset($rawNotifs['orders']['inApp']) ? (bool) $rawNotifs['orders']['inApp'] : true,
+            ],
+            'transactions' => [
+                'email' => isset($rawNotifs['transactions']['email']) ? (bool) $rawNotifs['transactions']['email'] : true,
+                'inApp' => isset($rawNotifs['transactions']['inApp']) ? (bool) $rawNotifs['transactions']['inApp'] : true,
+            ],
+            'reservations' => [
+                'email' => isset($rawNotifs['reservations']['email']) ? (bool) $rawNotifs['reservations']['email'] : true,
+                'inApp' => isset($rawNotifs['reservations']['inApp']) ? (bool) $rawNotifs['reservations']['inApp'] : true,
+            ],
+            'dailySummary' => [
+                'email' => isset($rawNotifs['dailySummary']['email']) ? (bool) $rawNotifs['dailySummary']['email'] : (isset($rawNotifs['sales_summary']) ? (bool) $rawNotifs['sales_summary'] : true),
+                'inApp' => isset($rawNotifs['dailySummary']['inApp']) ? (bool) $rawNotifs['dailySummary']['inApp'] : true,
+            ],
         ];
 
-        $defaultPreferences = [
-            'language' => 'Bahasa Indonesia',
-            'dateFormat' => 'DD/MM/YYYY',
-            'timezone' => 'WIB (UTC+7)',
+        $rawPrefs = is_array($user->user_preferences) ? $user->user_preferences : [];
+        $preferences = [
+            'language' => $rawPrefs['language'] ?? 'Bahasa Indonesia',
+            'dateFormat' => $rawPrefs['dateFormat'] ?? 'DD/MM/YYYY',
+            'timezone' => $rawPrefs['timezone'] ?? 'WIB (UTC+7)',
         ];
 
         return response()->json([
@@ -57,8 +71,8 @@ class AccountProfileController extends Controller
                     'datetime' => $lastActivity ? $lastActivity->logged_at->format('d M Y, H:i') : '-',
                     'location' => $lastActivity ? ($lastActivity->location ?: ($lastActivity->ip_address ?: 'Jakarta, Indonesia')) : 'Jakarta, Indonesia',
                 ],
-                'notification_preferences' => $user->notification_preferences ?: $defaultNotifications,
-                'user_preferences' => $user->user_preferences ?: $defaultPreferences,
+                'notification_preferences' => $notifications,
+                'user_preferences' => $preferences,
                 'is_internal' => $user->is_internal,
                 'created_at' => $user->created_at,
             ],
