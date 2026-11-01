@@ -10,10 +10,24 @@ use Illuminate\Routing\Controller;
 
 class OutletProfileController extends Controller
 {
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        $storeId = AppContext::storeId();
-        $store = Store::findOrFail($storeId);
+        $tenantId = AppContext::tenantId();
+        $storeId = $request->query('store_id') ?: $request->header('X-Store-Id') ?: AppContext::storeId();
+
+        $query = Store::query();
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+
+        $store = $storeId ? $query->where('id', $storeId)->first() : $query->first();
+
+        if (!$store) {
+            return response()->json([
+                'message' => 'Outlet tidak ditemukan.',
+                'data' => null,
+            ], 404);
+        }
 
         return response()->json([
             'message' => 'Outlet profile retrieved successfully.',
@@ -23,18 +37,36 @@ class OutletProfileController extends Controller
 
     public function update(Request $request): JsonResponse
     {
-        $storeId = AppContext::storeId();
-        $store = Store::findOrFail($storeId);
+        $tenantId = AppContext::tenantId();
+        $storeId = $request->input('store_id')
+            ?: $request->query('store_id')
+            ?: $request->header('X-Store-Id')
+            ?: AppContext::storeId();
+
+        $query = Store::query();
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+
+        $store = $storeId ? $query->where('id', $storeId)->first() : $query->first();
+
+        if (!$store) {
+            return response()->json([
+                'message' => 'Outlet tidak ditemukan.',
+                'data' => null,
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:100'],
+            'code' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string'],
-            'phone' => ['nullable', 'string', 'max:20'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:255'],
             'website' => ['nullable', 'string', 'max:255'],
-            'maps_url' => ['nullable', 'string', 'max:500'],
-            'logo_url' => ['nullable', 'string', 'max:500'],
-            'thumbnail_url' => ['nullable', 'string', 'max:500'],
+            'maps_url' => ['nullable', 'string'],
+            'logo_url' => ['nullable', 'string'],
+            'thumbnail_url' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'timezone' => ['nullable', 'string', 'max:50'],
@@ -50,7 +82,7 @@ class OutletProfileController extends Controller
 
         return response()->json([
             'message' => 'Outlet profile updated successfully.',
-            'data' => $store,
+            'data' => $store->fresh(),
         ]);
     }
 }

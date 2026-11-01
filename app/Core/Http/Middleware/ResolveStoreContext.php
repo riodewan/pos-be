@@ -28,7 +28,8 @@ class ResolveStoreContext
             ?: $request->header('X-Store-Code')
             ?: $request->route('store')
             ?: $request->route('store_id')
-            ?: $request->query('store_id');
+            ?: $request->query('store_id')
+            ?: $request->input('store_id');
 
         if (!$storeIdentifier) {
             if ($optional) {
