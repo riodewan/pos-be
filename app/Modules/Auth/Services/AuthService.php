@@ -60,8 +60,12 @@ class AuthService
         $tokenName = $deviceName ?: 'web-client';
         $token = $user->createToken($tokenName)->plainTextToken;
 
+        $user->loadMissing(['tenants', 'userRoles.role.permissions']);
+        $primaryTenantId = $user->tenants->first()?->id ?? $user->userRoles->first()?->tenant_id;
+
         // Log LOGIN event to audit_logs
         AuditLog::create([
+            'tenant_id' => $primaryTenantId,
             'user_id' => $user->id,
             'action' => AuditAction::LOGIN,
             'module' => 'auth',
@@ -70,8 +74,6 @@ class AuthService
             'ip_address' => $ipAddress,
             'user_agent' => $userAgent,
         ]);
-
-        $user->loadMissing(['tenants', 'userRoles.role.permissions']);
 
         return [
             'user' => $user,
@@ -88,8 +90,13 @@ class AuthService
         // Revoke token currently used for the request
         $user->currentAccessToken()?->delete();
 
+        $primaryTenantId = \App\Core\Context\AppContext::tenantId()
+            ?? $user->tenants()->first()?->id
+            ?? $user->userRoles()->first()?->tenant_id;
+
         // Log LOGOUT event to audit_logs
         AuditLog::create([
+            'tenant_id' => $primaryTenantId,
             'user_id' => $user->id,
             'action' => AuditAction::LOGOUT,
             'module' => 'auth',

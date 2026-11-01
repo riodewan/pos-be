@@ -19,18 +19,38 @@ class AuditService
         ?string $userId = null,
         ?string $startDate = null,
         ?string $endDate = null,
+        ?string $search = null,
         int $perPage = 20
     ): LengthAwarePaginator {
         $tenantId = AppContext::tenantId();
         $storeId = AppContext::storeId();
 
-        return AuditLog::with(['user', 'store'])
-            ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+        return AuditLog::with(['user.userRoles.role', 'store'])
+            ->when($tenantId, function ($q) use ($tenantId) {
+                $q->where(function ($sub) use ($tenantId) {
+                    $sub->where('tenant_id', $tenantId)
+                        ->orWhere(function ($userQuery) use ($tenantId) {
+                            $userQuery->whereNull('tenant_id')
+                                ->whereHas('user.userRoles', fn ($ur) => $ur->where('tenant_id', $tenantId));
+                        });
+                });
+            })
             ->when($storeId, fn ($q) => $q->where('store_id', $storeId))
             ->when($action, fn ($q) => $q->where('action', $action))
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->when($startDate, fn ($q) => $q->where('created_at', '>=', Carbon::parse($startDate)->startOfDay()))
             ->when($endDate, fn ($q) => $q->where('created_at', '<=', Carbon::parse($endDate)->endOfDay()))
+            ->when($search, function ($q) use ($search) {
+                $term = strtolower(trim($search));
+                $q->where(function ($sq) use ($term) {
+                    $sq->whereRaw('LOWER(ip_address) LIKE ?', ["%{$term}%"])
+                        ->orWhereRaw('LOWER(user_agent) LIKE ?', ["%{$term}%"])
+                        ->orWhereHas('user', function ($uq) use ($term) {
+                            $uq->whereRaw('LOWER(name) LIKE ?', ["%{$term}%"])
+                                ->orWhereRaw('LOWER(email) LIKE ?', ["%{$term}%"]);
+                        });
+                });
+            })
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
     }

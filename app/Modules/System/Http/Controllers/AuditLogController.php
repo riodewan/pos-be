@@ -23,6 +23,7 @@ class AuditLogController extends Controller
             userId: $request->query('user_id'),
             startDate: $request->query('start_date'),
             endDate: $request->query('end_date'),
+            search: $request->query('search'),
             perPage: (int) $request->query('per_page', 20)
         );
 
