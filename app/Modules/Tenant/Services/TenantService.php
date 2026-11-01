@@ -147,10 +147,20 @@ class TenantService
                     'id' => (string) Str::ulid(),
                     'name' => $name,
                     'email' => $data['email'],
+                    'phone' => $data['phone'] ?? null,
+                    'job_title' => $data['job_title'] ?? null,
                     'password' => Hash::make($password),
                     'is_internal' => false,
                     'is_active' => true,
                 ]);
+            } else {
+                if (!empty($data['phone'])) {
+                    $user->phone = $data['phone'];
+                }
+                if (!empty($data['name'])) {
+                    $user->name = $data['name'];
+                }
+                $user->save();
             }
 
             // Ensure membership
@@ -171,7 +181,15 @@ class TenantService
 
             $this->rbacService->assignRole($user, $role, $tenant->id, $storeId);
 
-            return $membership->load('user');
+            $roles = UserRole::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->with(['role', 'store'])
+                ->get();
+
+            $membership->load('user');
+            $membership->setRelation('roles', $roles);
+
+            return $membership;
         });
     }
 
@@ -246,5 +264,77 @@ class TenantService
                 ->where('user_id', $userId)
                 ->delete();
         });
+    }
+
+    /**
+     * Update a tenant team member (user info and roles).
+     */
+    public function updateMember(Tenant $tenant, string $userId, array $data): TenantUser
+    {
+        return DB::transaction(function () use ($tenant, $userId, $data) {
+            $membership = TenantUser::where('tenant_id', $tenant->id)
+                ->where('user_id', $userId)
+                ->firstOrFail();
+
+            $user = User::findOrFail($userId);
+
+            if (isset($data['name'])) {
+                $user->name = $data['name'];
+            }
+            if (isset($data['email'])) {
+                $user->email = $data['email'];
+            }
+            if (isset($data['phone'])) {
+                $user->phone = $data['phone'];
+            }
+            if (isset($data['job_title'])) {
+                $user->job_title = $data['job_title'];
+            }
+            if (isset($data['is_active'])) {
+                $user->is_active = (bool) $data['is_active'];
+            }
+            if (!empty($data['password'])) {
+                $user->password = Hash::make($data['password']);
+            }
+            $user->save();
+
+            // Update role if role_id provided
+            if (!empty($data['role_id'])) {
+                $this->updateUserRoles($tenant, $userId, [
+                    [
+                        'role_id' => $data['role_id'],
+                        'store_id' => $data['store_id'] ?? null,
+                    ]
+                ]);
+            } elseif (isset($data['roles']) && is_array($data['roles'])) {
+                $this->updateUserRoles($tenant, $userId, $data['roles']);
+            }
+
+            $roles = UserRole::where('tenant_id', $tenant->id)
+                ->where('user_id', $userId)
+                ->with(['role', 'store'])
+                ->get();
+
+            $membership->load('user');
+            $membership->setRelation('roles', $roles);
+
+            return $membership;
+        });
+    }
+
+    /**
+     * Toggle active status of a tenant team member.
+     */
+    public function toggleMemberStatus(Tenant $tenant, string $userId): User
+    {
+        $membership = TenantUser::where('tenant_id', $tenant->id)
+            ->where('user_id', $userId)
+            ->firstOrFail();
+
+        $user = User::findOrFail($userId);
+        $user->is_active = !$user->is_active;
+        $user->save();
+
+        return $user;
     }
 }

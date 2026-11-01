@@ -10,6 +10,7 @@ use App\Modules\Tenant\Http\Requests\UpdateUserRolesRequest;
 use App\Modules\Tenant\Http\Resources\TenantUserResource;
 use App\Modules\Tenant\Services\TenantService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -43,6 +44,51 @@ class TenantUserController extends Controller
             $membership = $this->tenantService->addMember($tenant, $request->validated());
             return $this->success(new TenantUserResource($membership), 'User added to tenant successfully.', Response::HTTP_CREATED);
         } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    /**
+     * Update user details and/or role in this tenant.
+     */
+    public function update(Request $request, string $userId): JsonResponse
+    {
+        $tenant = AppContext::tenant();
+
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:100',
+            'email' => 'sometimes|required|email|max:255',
+            'phone' => 'nullable|string|max:30',
+            'job_title' => 'nullable|string|max:100',
+            'role_id' => 'nullable|string|exists:roles,id',
+            'store_id' => 'nullable|string|exists:stores,id',
+            'roles' => 'nullable|array',
+            'is_active' => 'nullable|boolean',
+            'password' => 'nullable|string|min:8',
+        ]);
+
+        try {
+            $membership = $this->tenantService->updateMember($tenant, $userId, $validated);
+            return $this->success(new TenantUserResource($membership), 'Data staf berhasil diperbarui.');
+        } catch (InvalidArgumentException $e) {
+            return $this->error($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    /**
+     * Toggle active status of a team member.
+     */
+    public function toggleStatus(string $userId): JsonResponse
+    {
+        $tenant = AppContext::tenant();
+
+        try {
+            $user = $this->tenantService->toggleMemberStatus($tenant, $userId);
+            return $this->success([
+                'id' => $user->id,
+                'is_active' => $user->is_active,
+            ], 'Status staf berhasil diubah.');
+        } catch (\Exception $e) {
             return $this->error($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
     }

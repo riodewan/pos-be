@@ -52,13 +52,27 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
         ->middleware('permission:user.view');
     Route::post('/users', [\App\Modules\Tenant\Http\Controllers\TenantUserController::class, 'store'])
         ->middleware('permission:user.invite');
+    Route::put('/users/{userId}', [\App\Modules\Tenant\Http\Controllers\TenantUserController::class, 'update'])
+        ->middleware('permission:user.update');
+    Route::patch('/users/{userId}/toggle', [\App\Modules\Tenant\Http\Controllers\TenantUserController::class, 'toggleStatus'])
+        ->middleware('permission:user.update');
     Route::put('/users/{userId}/roles', [\App\Modules\Tenant\Http\Controllers\TenantUserController::class, 'updateRoles'])
         ->middleware('permission:user.assign_role');
     Route::delete('/users/{userId}', [\App\Modules\Tenant\Http\Controllers\TenantUserController::class, 'destroy'])
         ->middleware('permission:user.delete');
 
-    // Tenant Roles
+    // Tenant Roles & Permissions
     Route::get('/roles', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'index'])
+        ->middleware('permission:role.view');
+    Route::post('/roles', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'store'])
+        ->middleware('permission:role.create');
+    Route::get('/roles/{id}', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'show'])
+        ->middleware('permission:role.view');
+    Route::put('/roles/{id}', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'update'])
+        ->middleware('permission:role.update');
+    Route::delete('/roles/{id}', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'destroy'])
+        ->middleware('permission:role.delete');
+    Route::get('/permissions', [\App\Modules\Tenant\Http\Controllers\TenantRoleController::class, 'permissions'])
         ->middleware('permission:role.view');
 
     // Customers (CRM & Loyalty)

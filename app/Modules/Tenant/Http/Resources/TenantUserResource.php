@@ -16,6 +16,9 @@ class TenantUserResource extends JsonResource
                 'id' => $this->user?->id,
                 'name' => $this->user?->name,
                 'email' => $this->user?->email,
+                'phone' => $this->user?->phone,
+                'job_title' => $this->user?->job_title,
+                'avatar_url' => $this->user?->avatar_url,
                 'is_active' => $this->user?->is_active,
             ],
             'roles' => $this->whenLoaded('roles', function () {

@@ -16,6 +16,7 @@ class RoleResource extends JsonResource
             'scope' => $this->scope,
             'is_default' => $this->is_default,
             'description' => $this->description,
+            'staff_count' => (int) ($this->staff_count ?? 0),
             'permissions' => $this->whenLoaded('permissions', function () {
                 return $this->permissions->map(function ($p) {
                     return [
