@@ -356,8 +356,24 @@ Route::middleware(['auth:sanctum', 'internal.admin'])->prefix('internal')->group
     Route::get('/tenants', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listTenants']);
     Route::get('/tenants/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'showTenant']);
     Route::post('/tenants', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'createTenant']);
+    Route::put('/tenants/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateTenant']);
     Route::put('/tenants/{id}/status', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateTenantStatus']);
     Route::get('/stores', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listStores']);
+
+    // Approvals Center
+    Route::get('/approvals', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listApprovals']);
+    Route::post('/approvals/{id}/action', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'actionApproval']);
+
+    // Master Data
+    Route::get('/master/categories', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listMasterCategories']);
+    Route::post('/master/categories', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'storeMasterCategory']);
+    Route::put('/master/categories/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateMasterCategory']);
+    Route::delete('/master/categories/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'deleteMasterCategory']);
+
+    Route::get('/master/plans', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listSubscriptionPlans']);
+    Route::put('/master/plans/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateSubscriptionPlan']);
+
+    // Platform Audit Logs
     Route::get('/audit-logs', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'auditLogs']);
 });
 
