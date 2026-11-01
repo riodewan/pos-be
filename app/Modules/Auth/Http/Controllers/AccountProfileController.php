@@ -4,18 +4,42 @@ namespace App\Modules\Auth\Http\Controllers;
 
 use App\Modules\Auth\Models\User;
 use App\Modules\Auth\Models\UserLoginActivity;
+use App\Modules\Tenant\Models\Store;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 
 class AccountProfileController extends Controller
 {
     public function profile(Request $request): JsonResponse
     {
+        /** @var User $user */
         $user = $request->user();
         $user->load(['userRoles.role', 'tenants']);
+
+        $primaryRole = $user->userRoles->first()?->role?->name 
+            ?? ($user->is_internal ? 'Admin Internal' : 'Staff');
+
+        $tenant = $user->tenants->first();
+        $outletCount = $tenant ? Store::where('tenant_id', $tenant->id)->count() : 1;
+
+        $lastActivity = UserLoginActivity::where('user_id', $user->id)
+            ->orderBy('logged_at', 'desc')
+            ->first();
+
+        $defaultNotifications = [
+            'orders' => ['email' => true, 'inApp' => true],
+            'transactions' => ['email' => true, 'inApp' => true],
+            'reservations' => ['email' => true, 'inApp' => true],
+            'dailySummary' => ['email' => true, 'inApp' => true],
+        ];
+
+        $defaultPreferences = [
+            'language' => 'Bahasa Indonesia',
+            'dateFormat' => 'DD/MM/YYYY',
+            'timezone' => 'WIB (UTC+7)',
+        ];
 
         return response()->json([
             'message' => 'User profile retrieved successfully.',
@@ -23,20 +47,18 @@ class AccountProfileController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'phone' => $user->phone ?? '+62 812-3456-7890',
-                'job_title' => $user->job_title ?? 'Store Manager',
+                'phone' => $user->phone ?? '',
+                'job_title' => $user->job_title ?? $primaryRole,
+                'role' => $primaryRole,
+                'outlet_count' => $outletCount,
                 'avatar_url' => $user->avatar_url,
-                'notification_preferences' => $user->notification_preferences ?? [
-                    'order_email' => true,
-                    'stock_warning' => true,
-                    'promo_push' => false,
-                    'sales_summary' => true,
+                'joined_date' => $user->created_at ? $user->created_at->format('d M Y') : '-',
+                'last_login' => [
+                    'datetime' => $lastActivity ? $lastActivity->logged_at->format('d M Y, H:i') : '-',
+                    'location' => $lastActivity ? ($lastActivity->location ?: ($lastActivity->ip_address ?: 'Jakarta, Indonesia')) : 'Jakarta, Indonesia',
                 ],
-                'user_preferences' => $user->user_preferences ?? [
-                    'theme' => 'light',
-                    'language' => 'id',
-                    'compact_view' => false,
-                ],
+                'notification_preferences' => $user->notification_preferences ?: $defaultNotifications,
+                'user_preferences' => $user->user_preferences ?: $defaultPreferences,
                 'is_internal' => $user->is_internal,
                 'created_at' => $user->created_at,
             ],
@@ -50,9 +72,9 @@ class AccountProfileController extends Controller
 
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:100'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['nullable', 'string', 'max:100'],
-            'avatar_url' => ['nullable', 'string', 'max:500'],
+            'avatar_url' => ['nullable', 'string'],
             'notification_preferences' => ['nullable', 'array'],
             'user_preferences' => ['nullable', 'array'],
         ]);
@@ -61,7 +83,7 @@ class AccountProfileController extends Controller
 
         return response()->json([
             'message' => 'Profile updated successfully.',
-            'data' => $user,
+            'data' => $user->fresh(),
         ]);
     }
 

@@ -4,6 +4,7 @@ namespace App\Modules\Auth\Services;
 
 use App\Core\Enums\AuditAction;
 use App\Modules\Auth\Models\User;
+use App\Modules\Auth\Models\UserLoginActivity;
 use App\Modules\System\Models\AuditLog;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -73,6 +74,18 @@ class AuthService
             'entity_id' => $user->id,
             'ip_address' => $ipAddress,
             'user_agent' => $userAgent,
+        ]);
+
+        // Record UserLoginActivity
+        $deviceStr = $deviceName ?: ($userAgent ? (str_contains($userAgent, 'Mobile') ? 'Mobile Browser' : 'Web Browser') : 'Web Browser');
+        UserLoginActivity::create([
+            'user_id' => $user->id,
+            'status' => 'SUCCESS',
+            'title' => 'Login Berhasil',
+            'device' => $deviceStr,
+            'ip_address' => $ipAddress ?: '127.0.0.1',
+            'location' => 'Jakarta, Indonesia',
+            'logged_at' => now(),
         ]);
 
         return [
