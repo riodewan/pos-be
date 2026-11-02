@@ -10,6 +10,8 @@ use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\Supplier;
 use App\Modules\Catalog\Models\Unit;
 use App\Modules\Inventory\Models\InventoryStock;
+use App\Modules\RecipeMenu\Models\Recipe;
+use App\Modules\RecipeMenu\Models\RecipeItem;
 use App\Modules\System\Services\SettingService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
@@ -171,19 +173,25 @@ class CatalogService
     // PRODUCTS
     // ==========================================
 
+    protected array $productRelations = [
+        'recipes.recipeItems.ingredient.unit',
+        'recipes.recipeItems.ingredient.inventoryStocks',
+        'recipes.recipeItems.unit',
+    ];
+
     public function listProducts(): Collection
     {
-        return Product::orderBy('name')->get();
+        return Product::with($this->productRelations)->orderBy('name')->get();
     }
 
     public function getProduct(string $id): Product
     {
-        return Product::findOrFail($id);
+        return Product::with($this->productRelations)->findOrFail($id);
     }
 
     public function createProduct(array $data): Product
     {
-        return Product::create([
+        $product = Product::create([
             'name' => $data['name'],
             'sku' => $data['sku'],
             'description' => $data['description'] ?? null,
@@ -194,6 +202,12 @@ class CatalogService
             'type' => $data['type'] ?? 'Minuman',
             'cost_price' => $data['cost_price'] ?? 0,
         ]);
+
+        if (array_key_exists('recipe_items', $data) && is_array($data['recipe_items'])) {
+            $this->syncProductRecipe($product, $data['recipe_items']);
+        }
+
+        return $product->fresh()->load($this->productRelations);
     }
 
     public function updateProduct(Product $product, array $data): Product
@@ -210,7 +224,76 @@ class CatalogService
             'cost_price' => array_key_exists('cost_price', $data) ? $data['cost_price'] : null,
         ], fn ($val) => !is_null($val)));
 
-        return $product->fresh();
+        if (array_key_exists('recipe_items', $data) && is_array($data['recipe_items'])) {
+            $this->syncProductRecipe($product, $data['recipe_items']);
+        }
+
+        return $product->fresh()->load($this->productRelations);
+    }
+
+    public function syncProductRecipe(Product $product, array $recipeItems): void
+    {
+        $existingRecipes = Recipe::where('store_id', $product->store_id)
+            ->where('product_id', $product->id)
+            ->get();
+
+        if (empty($recipeItems)) {
+            foreach ($existingRecipes as $rec) {
+                RecipeItem::where('recipe_id', $rec->id)->delete();
+                $rec->delete();
+            }
+            return;
+        }
+
+        $recipe = $existingRecipes->first();
+        if (!$recipe) {
+            $recipe = Recipe::create([
+                'store_id' => $product->store_id,
+                'product_id' => $product->id,
+                'name' => 'Resep ' . $product->name,
+                'status' => CommonStatus::ACTIVE,
+            ]);
+        } else {
+            $recipe->update([
+                'name' => 'Resep ' . $product->name,
+                'status' => CommonStatus::ACTIVE,
+            ]);
+            // Delete any duplicate recipes for the same product
+            foreach ($existingRecipes->slice(1) as $dup) {
+                RecipeItem::where('recipe_id', $dup->id)->delete();
+                $dup->delete();
+            }
+        }
+
+        RecipeItem::where('recipe_id', $recipe->id)->delete();
+
+        $calculatedHpp = 0.0;
+        $fallbackUnitId = Unit::first()?->id;
+
+        foreach ($recipeItems as $item) {
+            $ingredient = Ingredient::find($item['ingredient_id']);
+            if (!$ingredient) {
+                continue;
+            }
+            $unitId = !empty($item['unit_id']) ? $item['unit_id'] : ($ingredient->unit_id ?: $fallbackUnitId);
+            $qty = max(0, (float) ($item['quantity'] ?? 0));
+            if ($qty <= 0 || !$unitId) {
+                continue;
+            }
+
+            RecipeItem::create([
+                'recipe_id' => $recipe->id,
+                'ingredient_id' => $ingredient->id,
+                'unit_id' => $unitId,
+                'quantity' => $qty,
+            ]);
+
+            $calculatedHpp += $qty * (float) ($ingredient->cost_price ?? 0);
+        }
+
+        if ($calculatedHpp > 0) {
+            $product->update(['cost_price' => round($calculatedHpp, 2)]);
+        }
     }
 
     public function deleteProduct(Product $product): void
@@ -361,6 +444,25 @@ class CatalogService
                     'quantity' => max(0, (float) $data['current_stock']),
                     'average_cost' => (float) ($data['cost_price'] ?? $ingredient->cost_price ?? 0),
                 ]);
+            }
+        } elseif (isset($data['cost_price'])) {
+            InventoryStock::where('store_id', $ingredient->store_id)
+                ->where('ingredient_id', $ingredient->id)
+                ->update(['average_cost' => (float) $data['cost_price']]);
+        }
+
+        // Recalculate HPP (cost_price) on products whose recipe uses this ingredient
+        if (isset($data['cost_price'])) {
+            $affectedRecipes = Recipe::with(['recipeItems.ingredient', 'product'])
+                ->whereHas('recipeItems', fn ($q) => $q->where('ingredient_id', $ingredient->id))
+                ->get();
+            foreach ($affectedRecipes as $rec) {
+                if ($rec->product) {
+                    $newHpp = $rec->recipeItems->sum(fn ($ri) => (float) $ri->quantity * (float) ($ri->ingredient?->cost_price ?? 0));
+                    if ($newHpp > 0) {
+                        $rec->product->update(['cost_price' => round($newHpp, 2)]);
+                    }
+                }
             }
         }
 

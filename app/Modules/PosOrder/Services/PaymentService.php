@@ -108,7 +108,7 @@ class PaymentService
                     ->where('store_id', $storeId)
                     ->where('product_id', $orderItem->product_id)
                     ->where('status', CommonStatus::ACTIVE)
-                    ->with(['recipeItems.ingredient'])
+                    ->with(['recipeItems.ingredient.unit', 'recipeItems.unit'])
                     ->first();
 
                 if ($recipe) {
@@ -125,11 +125,17 @@ class PaymentService
                         $currentStockQty = $stock ? (float) $stock->quantity : 0;
                         if (!$stock || $currentStockQty < $deductQty) {
                             $ingredientName = $recipeItem->ingredient ? $recipeItem->ingredient->name : $recipeItem->ingredient_id;
-                            throw new InvalidArgumentException("Insufficient stock for ingredient '{$ingredientName}' to fulfill order.");
+                            $unitCode = $recipeItem->unit?->code ?? $recipeItem->ingredient?->unit?->code ?? '';
+                            throw new InvalidArgumentException("Stok bahan '{$ingredientName}' tidak mencukupi untuk pesanan ini (Dibutuhkan: {$deductQty} {$unitCode}, Tersedia: {$currentStockQty} {$unitCode}).");
                         }
 
                         // Decrement stock
                         $stock->decrement('quantity', $deductQty);
+
+                        // Ensure stock average_cost is populated if it was 0
+                        if ((float) $stock->average_cost <= 0 && (float) ($recipeItem->ingredient?->cost_price ?? 0) > 0) {
+                            $stock->update(['average_cost' => (float) $recipeItem->ingredient->cost_price]);
+                        }
 
                         // Record immutable inventory movement (negative quantity for sale deduction)
                         InventoryMovement::create([
@@ -141,7 +147,7 @@ class PaymentService
                             'quantity' => -1 * $deductQty,
                             'reference_type' => 'ORDER',
                             'reference_id' => $lockedOrder->id,
-                            'notes' => "Sale deduction for Order #{$lockedOrder->order_number}",
+                            'notes' => "Pengurangan stok penjualan Pesanan #{$lockedOrder->order_number} ({$orderItem->product_name} x{$orderItem->quantity})",
                             'created_by' => $userId,
                         ]);
                     }

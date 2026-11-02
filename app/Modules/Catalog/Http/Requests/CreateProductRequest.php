@@ -36,6 +36,10 @@ class CreateProductRequest extends FormRequest
             'category' => ['nullable', 'string', 'max:100'],
             'type' => ['nullable', 'string', 'max:50'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'recipe_items' => ['nullable', 'array'],
+            'recipe_items.*.ingredient_id' => ['required', 'string', 'exists:ingredients,id'],
+            'recipe_items.*.unit_id' => ['nullable', 'string'],
+            'recipe_items.*.quantity' => ['required', 'numeric', 'gt:0'],
         ];
     }
 }

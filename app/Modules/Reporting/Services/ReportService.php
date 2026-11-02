@@ -221,10 +221,10 @@ class ReportService
                 u.code as unit_code,
                 u.name as unit_name,
                 ABS(SUM(im.quantity)) as total_consumed_quantity,
-                COALESCE(s.average_cost, 0) as unit_cost,
-                ROUND(ABS(SUM(im.quantity)) * COALESCE(s.average_cost, 0), 2) as estimated_cogs
+                COALESCE(NULLIF(s.average_cost, 0), ing.cost_price, 0) as unit_cost,
+                ROUND(ABS(SUM(im.quantity)) * COALESCE(NULLIF(s.average_cost, 0), ing.cost_price, 0), 2) as estimated_cogs
             ')
-            ->groupBy('im.ingredient_id', 'ing.name', 'u.code', 'u.name', 's.average_cost')
+            ->groupBy('im.ingredient_id', 'ing.name', 'u.code', 'u.name', 's.average_cost', 'ing.cost_price')
             ->orderByDesc('total_consumed_quantity')
             ->get();
 
@@ -441,7 +441,20 @@ class ReportService
             ? round((($currentAov - $prevAov) / $prevAov) * 100, 1)
             : 0.0;
 
-        $profitEstimate = max(0, $sales['kpis']['net_sales'] * 0.45);
+        // Calculate actual COGS from sold products' cost_price (HPP)
+        $cogsQuery = DB::table('order_items as oi')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->leftJoin('products as p', 'p.id', '=', 'oi.product_id');
+        $this->scopeStoreOrTenant($cogsQuery, 'o.store_id');
+        $actualCogs = (float) $cogsQuery
+            ->where('o.status', OrderStatus::COMPLETED->value)
+            ->whereBetween('o.created_at', [$start, $end])
+            ->selectRaw('COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, 0)), 0) as total_cogs')
+            ->value('total_cogs');
+
+        $profitEstimate = $actualCogs > 0
+            ? max(0, $sales['kpis']['net_sales'] - $actualCogs)
+            : max(0, $sales['kpis']['net_sales'] * 0.45);
 
         // Today orders breakdown by status
         $todayQuery = DB::table('orders');
