@@ -31,3 +31,4 @@ class StaffInvitationMail extends Mailable
         );
     }
 }
+

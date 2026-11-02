@@ -31,3 +31,4 @@ class DailySalesDigestMail extends Mailable
         );
     }
 }
+

@@ -58,3 +58,4 @@
         Tips: Anda dapat memperbarui formula batas minimum bahan baku pada menu <strong>Inventori ➔ Bahan Baku</strong> di dashboard NemuHUB.
     </p>
 @endsection
+

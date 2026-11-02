@@ -32,3 +32,4 @@ class PlatformApprovalNoticeMail extends Mailable
         );
     }
 }
+

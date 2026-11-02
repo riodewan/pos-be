@@ -31,3 +31,4 @@ class LowStockAlertMail extends Mailable
         );
     }
 }
+

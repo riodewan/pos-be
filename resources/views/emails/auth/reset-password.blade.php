@@ -28,3 +28,4 @@
         <a href="{{ $resetUrl ?? '#' }}" style="color: #FF5C38; word-break: break-all;">{{ $resetUrl ?? '#' }}</a>
     </p>
 @endsection
+
