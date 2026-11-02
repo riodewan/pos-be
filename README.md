@@ -1,82 +1,118 @@
-# POS SaaS Backend (Modular Monolith)
+# NemuHUB / NemuPOS Backend (Laravel Modular Monolith)
 
-Multi-Tenant Point of Sale (POS) backend platform for coffee shops and F&B businesses, built with **Laravel 11**, **PHP 8+**, and **PostgreSQL**.
-
----
-
-## 🚀 Fitur & Modul Utama
-
-1. **Authentication & Identity (`App\Modules\Auth`)**: Sanctum token auth, registrasi, login, logout, profil, dan auto-logging audit ke `audit_logs`.
-2. **Multi-Tenant & Store Scoping (`App\Modules\Tenant`)**: Profil tenant, manajemen toko/outlet, anggota tim, dan context resolver middleware (`X-Tenant-Id` & `X-Store-Id`).
-3. **RBAC Engine (`App\Modules\Rbac`)**: Role `INTERNAL` (Super Admin) & `TENANT` (Owner, Manager, Inventory, Cashier), middleware hak akses `permission` & `role`.
-4. **Catalog & Raw Materials (`App\Modules\Catalog`)**: Satuan unit, produk, bahan baku, supplier dengan keunikan SKU per toko.
-5. **Recipes & Menus (`App\Modules\RecipeMenu`)**: Formulasi resep produk (HPP), katalog menu per outlet, validasi isolasi lintas toko (*cross-store*).
-6. **Purchasing & Inventory (`App\Modules\Inventory`)**: Purchase Orders (PO), penerimaan barang dengan perhitungan *Moving Average Cost*, stok opname, pencatatan wastage, dan buku besar mutasi imutabel (`inventory_movements`).
-7. **POS & Table Management (`App\Modules\PosOrder`)**: Meja outlet, status okupansi real-time, rotasi QR token, pesanan kasir, pesanan QR pelanggan (`/api/public/qr/{token}`), dan pemrosesan pembayaran dengan *recipe-based stock depletion*.
-8. **Sales Reporting & Dashboard (`App\Modules\Reporting`)**: KPI penjualan, tren harian, produk terlaris, rekap metode bayar, konsumsi bahan baku & margin laba kotor, dan rekap shift kasir.
-9. **System Audit & Settings (`App\Modules\System`)**: Append-only audit logs keamanan dan pengaturan hierarkis (`System -> Tenant -> Store`) sesuai Decision #8.
+Platform Backend Multi-Tenant Point of Sale (POS) & Manajemen Restoran/F&B berbasis **Laravel 12**, **PHP 8.2+**, dan **PostgreSQL**.
 
 ---
 
-## 🛠️ Persyaratan Lingkungan
+## 🌟 Fitur & Arsitektur Modul
 
-- **PHP**: 8.2+ (dengan ekstensi `pdo_pgsql`, `pgsql`, `mbstring`, `bcmath`, `ctype`, `json`)
-- **PostgreSQL**: 15+ (Database `pos_db`, schema `public`)
-- **Composer**: 2.x
+Backend dibangun dengan arsitektur **Modular Monolith** yang memisahkan tanggung jawab bisnis per domain:
+
+| Modul | Namespace | Deskripsi |
+|---|---|---|
+| **Auth & Security** | `App\Modules\Auth` | Otentikasi Sanctum, Profil Akun, Ganti Password, Histori Login, Audit Keamanan |
+| **Tenant & Store** | `App\Modules\Tenant` | Isolasi Multi-Tenant, Cabang Outlet, Data Master Global, Approval Super Admin |
+| **RBAC Engine** | `App\Modules\Rbac` | Manajemen Peran & Izin Granular (`INTERNAL` Super Admin & `TENANT` Mitra) |
+| **Catalog & Products** | `App\Modules\Catalog` | Manajemen Produk, Bahan Baku, Pemasok (Suppliers), Satuan Unit (Units) |
+| **Recipe & Menus** | `App\Modules\RecipeMenu` | Formulasi Resep, HPP Otomatis, Katalog Menu per Cabang |
+| **Inventory & PO** | `App\Modules\Inventory` | Purchase Order (PO), Mutasi Stok Imutabel, Penyesuaian/Opname, Wastage |
+| **POS & Orders** | `App\Modules\PosOrder` | Kasir Kilat, Meja & Rotasi QR Meja, Kitchen Display (KDS), Auto Recipe Depletion |
+| **Finance & Reports** | `App\Modules\Reporting` | Omset Bersih, Rekonsiliasi, Penarikan Dana (Disbursement), Audit Kas Shift |
+| **System & Notifications**| `App\Modules\System` | Pusat Notifikasi Interaktif, Audit Trail Log, Pengaturan Hierarkis |
+
+---
+
+## 🔑 Akun Pengujian Default (Seeded Test Accounts)
+
+Jalankan seeder untuk mendapatkan data pengujian lengkap:
+
+| Peran (Role) | Email | Password | Akses & Tanggung Jawab |
+|---|---|---|---|
+| **Super Admin Platform** | `admin@pos.com` | `Password123!` | Panel Admin Internal, Approval Cabang & Paket |
+| **Mitra Owner** | `owner@kopinusantara.com` | `Password123!` | Akses Penuh Bisnis Kopi Nusantara |
+| **Store Manager** | `manager@kopinusantara.com` | `Password123!` | Operasional Toko Outlet Senopati |
+| **Kasir (Head Cashier)** | `kasir@kopinusantara.com` | `Password123!` | Terminal Kasir (POS) & Tutup Kasir Shift |
+| **Inventory / Gudang** | `inventory@kopinusantara.com` | `Password123!` | Stok Bahan Baku, Mutasi, dan Purchase Orders |
+| **Dapur / Barista** | `dapur@kopinusantara.com` | `Password123!` | Layar Kitchen Display System (KDS) |
 
 ---
 
 ## ⚙️ Panduan Menjalankan Lokal
 
-1. **Clone & Masuk ke Direktori**:
-   ```bash
-   cd c:/Users/USER/Documents/Rio/pos-app/pos-be
-   ```
+### 1. Prasyarat Sistem
+* **PHP**: 8.2 atau lebih baru (ekstensi: `pdo_pgsql`, `pgsql`, `mbstring`, `bcmath`, `ctype`, `json`, `curl`)
+* **PostgreSQL**: 15 atau lebih baru
+* **Composer**: 2.x
 
-2. **Install Dependensi Composer**:
-   ```bash
-   composer install
-   ```
-
-3. **Konfigurasi Environment (`.env`)**:
-   Pastikan variabel PostgreSQL diatur dengan benar:
-   ```env
-   DB_CONNECTION=pgsql
-   DB_HOST=127.0.0.1
-   DB_PORT=5432
-   DB_DATABASE=pos_db
-   DB_USERNAME=postgres
-   DB_PASSWORD=postgres
-   ```
-
-4. **Jalankan Migrasi & Database Seeder**:
-   ```bash
-   php artisan migrate
-   php artisan db:seed --class=RbacSeeder
-   ```
-
-5. **Jalankan Server Lokal**:
-   ```bash
-   php artisan serve
-   ```
-   API akan aktif di: `http://127.0.0.1:8000/api`
-
----
-
-## 🧪 Menjalankan Test Suite
-
-Proyek ini dilengkapi dengan 77 feature dan unit test yang mencakup seluruh skenario validasi bisnis:
-
+### 2. Instalasi Dependensi
 ```bash
-php artisan test
+cd pos-be
+composer install
 ```
 
-Semua pengujian menggunakan trait `DatabaseTransactions` sehingga tidak meninggalkan data sampah di database.
+### 3. Konfigurasi Environment (`.env`)
+Salin `.env.example` ke `.env` lalu sesuaikan kredensial database PostgreSQL:
+```env
+APP_NAME=NemuHUB
+APP_ENV=local
+APP_KEY=base64:...
+APP_DEBUG=true
+APP_URL=http://127.0.0.1:8000
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=pos_db
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+```
+
+### 4. Migrasi & Seeder Bersih (Fresh Seed)
+Eksekusi migrasi dari awal beserta data seeder resmi:
+```bash
+php artisan migrate:fresh --seed
+```
+
+### 5. Jalankan Server API
+```bash
+php artisan serve
+```
+API endpoint aktif di: `http://127.0.0.1:8000/api`
 
 ---
 
-## 📖 Dokumentasi Lengkap API
+## 📧 Template Email & Live Preview (Tanpa SMTP)
 
-Dokumentasi lengkap seluruh 85 endpoint API (Request, Response, Headers, Permission, dan Format JSON) tersedia di:
+Tersedia rute pratinjau (*live preview*) di browser untuk 7 template email responsif:
 
+* Buka: **`http://localhost:8000/mail-preview`**
+  * `mail-preview/reset-password`: Atur Ulang Kata Sandi
+  * `mail-preview/staff-invitation`: Undangan Login Staf Baru
+  * `mail-preview/disbursement-status`: Status Pencairan Dana (Payout) Berhasil
+  * `mail-preview/shift-closing`: Rekap Penutupan Shift Kasir (Audit Kas)
+  * `mail-preview/daily-sales`: Laporan Penjualan Harian Toko (Daily Sales Digest)
+  * `mail-preview/low-stock`: Peringatan Stok Bahan Baku Menipis
+  * `mail-preview/approval-notice`: Status Persetujuan Cabang / Verifikasi
+
+*Saat Anda sudah memiliki SMTP di production, cukup isi kredensial `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` di `.env`.*
+
+---
+
+## 🚀 Panduan Kesiapan Production
+
+Sebelum melakukan deployment ke server production:
+1. Pastikan **`APP_ENV=production`** dan **`APP_DEBUG=false`** pada `.env`.
+2. Atur **`CORS_ALLOWED_ORIGINS`** dan **`SANCTUM_STATEFUL_DOMAINS`** sesuai domain frontend Anda.
+3. Jalankan optimasi cache Laravel:
+   ```bash
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:cache
+   ```
+4. Pasang backup otomatis database harian via PostgreSQL `pg_dump`.
+
+---
+
+## 📖 Dokumentasi Endpoint API
+Dokumentasi teknis parameter request, response, dan headers:
 👉 **[`../docs/api_documentation.md`](../docs/api_documentation.md)**
