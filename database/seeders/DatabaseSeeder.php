@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UnitSeeder::class,
+            PlatformMasterDataSeeder::class,
             RbacSeeder::class,
             SuperAdminSeeder::class,
             DemoTenantSeeder::class,

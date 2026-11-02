@@ -28,6 +28,7 @@ class UnitSeeder extends Seeder
             ['name' => 'Pieces', 'code' => 'PCS', 'type' => UnitType::COUNT],
             ['name' => 'Pack', 'code' => 'PACK', 'type' => UnitType::COUNT],
             ['name' => 'Box', 'code' => 'BOX', 'type' => UnitType::COUNT],
+            ['name' => 'Porsi', 'code' => 'PORSI', 'type' => UnitType::COUNT],
         ];
 
         foreach ($units as $u) {
