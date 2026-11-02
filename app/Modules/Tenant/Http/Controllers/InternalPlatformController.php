@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Auth\Models\User;
 use App\Modules\Catalog\Models\Unit;
 use App\Modules\PosOrder\Models\Order;
+use App\Modules\Rbac\Models\UserRole;
 use App\Modules\System\Models\AuditLog;
 use App\Modules\Tenant\Models\PlatformApproval;
 use App\Modules\Tenant\Models\PlatformMasterCategory;
@@ -16,6 +17,7 @@ use App\Modules\Tenant\Models\PlatformMasterItem;
 use App\Modules\Tenant\Models\PlatformSubscriptionPlan;
 use App\Modules\Tenant\Models\Store;
 use App\Modules\Tenant\Models\Tenant;
+use App\Modules\Tenant\Models\TenantUser;
 use App\Modules\Tenant\Services\TenantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -99,6 +101,17 @@ class InternalPlatformController extends Controller
         $tenant = Tenant::with(['stores', 'tenantUsers.user'])
             ->withCount(['stores', 'tenantUsers'])
             ->findOrFail($id);
+
+        $userRoles = UserRole::where('tenant_id', $tenant->id)
+            ->with(['role', 'store'])
+            ->get()
+            ->groupBy('user_id');
+
+        foreach ($tenant->tenantUsers as $tu) {
+            $firstRole = $userRoles->get($tu->user_id)?->first();
+            $tu->setAttribute('role', $firstRole?->role?->name ?? 'Staff');
+            $tu->setAttribute('store_name', $firstRole?->store?->name ?? 'Semua Outlet');
+        }
 
         return $this->success($tenant);
     }
@@ -505,5 +518,276 @@ class InternalPlatformController extends Controller
             ->paginate((int) $request->query('per_page', 10));
 
         return $this->success($logs);
+    }
+
+    /**
+     * List all users across the platform with their tenant memberships & roles.
+     */
+    public function listUsers(Request $request): JsonResponse
+    {
+        $search = $request->query('search');
+        $filterType = strtoupper((string) $request->query('filter_type', 'ALL'));
+        $tenantId = $request->query('tenant_id');
+
+        $query = User::query()
+            ->when($search, function ($q, $search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('email', 'ilike', "%{$search}%")
+                        ->orWhere('phone', 'ilike', "%{$search}%")
+                        ->orWhereHas('tenants', fn ($tq) => $tq->where('name', 'ilike', "%{$search}%"));
+                });
+            })
+            ->when($tenantId, function ($q, $tenantId) {
+                $q->whereHas('tenantUsers', fn ($tq) => $tq->withoutGlobalScope('tenant')->where('tenant_id', $tenantId));
+            });
+
+        if ($filterType === 'INTERNAL') {
+            $query->where('is_internal', true);
+        } elseif ($filterType === 'MITRA') {
+            $query->where('is_internal', false)
+                ->whereHas('tenantUsers', fn ($tq) => $tq->withoutGlobalScope('tenant'));
+        } elseif ($filterType === 'UNASSIGNED') {
+            $query->where('is_internal', false)
+                ->whereDoesntHave('tenantUsers', fn ($tq) => $tq->withoutGlobalScope('tenant'));
+        }
+
+        $users = $query->orderBy('created_at', 'desc')
+            ->paginate((int) $request->query('per_page', 10));
+
+        $userIds = $users->getCollection()->pluck('id')->all();
+
+        $tenantMemberships = TenantUser::withoutGlobalScope('tenant')
+            ->whereIn('user_id', $userIds)
+            ->with(['tenant.stores'])
+            ->get()
+            ->groupBy('user_id');
+
+        $userRoles = UserRole::whereIn('user_id', $userIds)
+            ->with(['role', 'store'])
+            ->get()
+            ->groupBy(fn ($ur) => $ur->user_id . ':' . $ur->tenant_id);
+
+        $users->getCollection()->transform(function (User $u) use ($tenantMemberships, $userRoles) {
+            $memberships = $tenantMemberships->get($u->id, collect());
+            $tenantsData = $memberships->map(function ($m) use ($u, $userRoles) {
+                $roleAssignment = $userRoles->get($u->id . ':' . $m->tenant_id)?->first();
+                return [
+                    'id' => $m->tenant?->id ?? $m->tenant_id,
+                    'name' => $m->tenant?->name ?? 'Unknown Tenant',
+                    'slug' => $m->tenant?->slug ?? '',
+                    'status' => $m->tenant?->status ?? 'ACTIVE',
+                    'role' => $roleAssignment?->role?->name ?? 'Owner',
+                    'store_id' => $roleAssignment?->store_id,
+                    'store_name' => $roleAssignment?->store?->name ?? 'Semua Outlet',
+                ];
+            })->values()->all();
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'phone' => $u->phone,
+                'job_title' => $u->job_title,
+                'is_internal' => (bool) $u->is_internal,
+                'is_active' => (bool) ($u->is_active ?? true),
+                'created_at' => $u->created_at,
+                'tenants' => $tenantsData,
+            ];
+        });
+
+        return $this->success($users);
+    }
+
+    /**
+     * Create a new user account directly by Internal Admin (for Mitra or Internal).
+     */
+    public function createUser(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'account_mode' => ['required', 'string', 'in:EXISTING_TENANT,NEW_TENANT,UNASSIGNED_MITRA,INTERNAL_ADMIN'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:6'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'job_title' => ['nullable', 'string', 'max:100'],
+            // For EXISTING_TENANT
+            'tenant_id' => ['required_if:account_mode,EXISTING_TENANT', 'nullable', 'string', 'exists:tenants,id'],
+            'role_name' => ['nullable', 'string', 'max:50'],
+            'store_id' => ['nullable', 'string'],
+            // For NEW_TENANT
+            'tenant_name' => ['required_if:account_mode,NEW_TENANT', 'nullable', 'string', 'max:255'],
+            'tenant_address' => ['nullable', 'string'],
+            'store_name' => ['nullable', 'string', 'max:255'],
+            'store_code' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $mode = $validated['account_mode'];
+
+        if ($mode === 'EXISTING_TENANT') {
+            $tenant = Tenant::findOrFail($validated['tenant_id']);
+            $membership = $this->tenantService->addMember($tenant, [
+                'name' => trim($validated['name']),
+                'email' => $email,
+                'password' => $validated['password'],
+                'phone' => $validated['phone'] ?? null,
+                'job_title' => $validated['job_title'] ?? null,
+                'role_name' => $validated['role_name'] ?? 'Owner',
+                'store_id' => !empty($validated['store_id']) ? $validated['store_id'] : null,
+                'is_active' => true,
+            ]);
+
+            return $this->success($membership->user, 'Akun pengguna berhasil dibuat dan ditautkan ke mitra.', Response::HTTP_CREATED);
+        }
+
+        if ($mode === 'NEW_TENANT') {
+            $existingUser = User::whereRaw('LOWER(email) = ?', [$email])->exists();
+            if ($existingUser) {
+                return $this->error('Email pengguna sudah terdaftar di sistem.', Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $tenantEmail = $email;
+            if (Tenant::whereRaw('LOWER(email) = ?', [$tenantEmail])->exists()) {
+                $parts = explode('@', $email);
+                $tenantEmail = $parts[0] . '+' . strtolower(Str::random(4)) . '@' . ($parts[1] ?? 'mitra.com');
+            }
+
+            $tenant = $this->tenantService->registerTenant([
+                'name' => trim($validated['tenant_name']),
+                'email' => $tenantEmail,
+                'phone' => $validated['phone'] ?? null,
+                'address' => $validated['tenant_address'] ?? null,
+                'owner_name' => trim($validated['name']),
+                'owner_email' => $email,
+                'password' => $validated['password'],
+                'store_name' => !empty($validated['store_name']) ? trim($validated['store_name']) : (trim($validated['tenant_name']) . ' - Outlet Pusat'),
+                'store_code' => !empty($validated['store_code']) ? trim($validated['store_code']) : 'PUSAT-01',
+                'status' => 'ACTIVE',
+            ]);
+
+            $owner = User::whereRaw('LOWER(email) = ?', [$email])->first();
+
+            return $this->success($owner, 'Akun Mitra beserta Brand & Outlet berhasil dibuat!', Response::HTTP_CREATED);
+        }
+
+        // UNASSIGNED_MITRA or INTERNAL_ADMIN
+        if (User::whereRaw('LOWER(email) = ?', [$email])->exists()) {
+            return $this->error('Email sudah digunakan oleh akun lain.', Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = User::create([
+            'id' => (string) Str::ulid(),
+            'name' => trim($validated['name']),
+            'email' => $email,
+            'phone' => $validated['phone'] ?? null,
+            'job_title' => $validated['job_title'] ?? ($mode === 'INTERNAL_ADMIN' ? 'Platform Admin' : 'Owner Mitra'),
+            'password' => $validated['password'],
+            'is_internal' => $mode === 'INTERNAL_ADMIN',
+            'is_active' => true,
+        ]);
+
+        return $this->success(
+            $user,
+            $mode === 'INTERNAL_ADMIN'
+                ? 'Akun Admin Internal berhasil dibuat!'
+                : 'Akun Mitra baru berhasil dibuat (siap digunakan login untuk pengisian KYB).',
+            Response::HTTP_CREATED
+        );
+    }
+
+    /**
+     * Update an existing user account (info, password reset, status, and optional tenant assignment).
+     */
+    public function updateUser(Request $request, string $id): JsonResponse
+    {
+        $user = User::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'email' => ['sometimes', 'required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'job_title' => ['nullable', 'string', 'max:100'],
+            'password' => ['nullable', 'string', 'min:6'],
+            'is_active' => ['nullable', 'boolean'],
+            'is_internal' => ['nullable', 'boolean'],
+            'tenant_id' => ['nullable', 'string', 'exists:tenants,id'],
+            'role_name' => ['nullable', 'string', 'max:50'],
+            'store_id' => ['nullable', 'string'],
+        ]);
+
+        if (isset($validated['email'])) {
+            $email = strtolower(trim($validated['email']));
+            $exists = User::whereRaw('LOWER(email) = ?', [$email])->where('id', '!=', $user->id)->exists();
+            if ($exists) {
+                return $this->error('Email sudah digunakan oleh akun lain.', Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            $user->email = $email;
+        }
+
+        if (isset($validated['name'])) {
+            $user->name = trim($validated['name']);
+        }
+        if (array_key_exists('phone', $validated)) {
+            $user->phone = $validated['phone'];
+        }
+        if (array_key_exists('job_title', $validated)) {
+            $user->job_title = $validated['job_title'];
+        }
+        if (isset($validated['is_active'])) {
+            $user->is_active = (bool) $validated['is_active'];
+        }
+        if (isset($validated['is_internal'])) {
+            $user->is_internal = (bool) $validated['is_internal'];
+        }
+        if (!empty($validated['password'])) {
+            $user->password = $validated['password'];
+        }
+        $user->save();
+
+        // If tenant_id is provided, also link or update their role in that tenant
+        if (!empty($validated['tenant_id'])) {
+            $tenant = Tenant::findOrFail($validated['tenant_id']);
+            $this->tenantService->addMember($tenant, [
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'job_title' => $user->job_title,
+                'role_name' => $validated['role_name'] ?? 'Owner',
+                'store_id' => !empty($validated['store_id']) ? $validated['store_id'] : null,
+                'is_active' => $user->is_active,
+            ]);
+        }
+
+        return $this->success($user, 'Data akun pengguna berhasil diperbarui.');
+    }
+
+    /**
+     * Toggle user active status.
+     */
+    public function toggleUserStatus(string $id): JsonResponse
+    {
+        $user = User::findOrFail($id);
+        $user->is_active = !$user->is_active;
+        $user->save();
+
+        return $this->success($user, 'Status aktif pengguna berhasil diperbarui.');
+    }
+
+    /**
+     * Delete user account.
+     */
+    public function deleteUser(Request $request, string $id): JsonResponse
+    {
+        if ($request->user()->id === $id) {
+            return $this->error('Tidak dapat menghapus akun Anda sendiri yang sedang aktif.', Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = User::findOrFail($id);
+        UserRole::where('user_id', $user->id)->delete();
+        TenantUser::withoutGlobalScope('tenant')->where('user_id', $user->id)->delete();
+        $user->delete();
+
+        return $this->success(null, 'Akun pengguna berhasil dihapus.');
     }
 }

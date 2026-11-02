@@ -37,10 +37,10 @@ class TenantService
                 'id' => (string) Str::ulid(),
                 'name' => $data['name'],
                 'slug' => $slug,
-                'email' => $data['email'],
+                'email' => strtolower(trim($data['email'])),
                 'phone' => $data['phone'] ?? null,
                 'address' => $data['address'] ?? null,
-                'status' => 'ACTIVE',
+                'status' => $data['status'] ?? 'ACTIVE',
             ]);
 
             // 1. Create Default Tenant Roles
@@ -56,16 +56,30 @@ class TenantService
             ]);
 
             // 3. Create or find Owner User
-            $owner = User::firstOrCreate(
-                ['email' => $data['owner_email']],
-                [
+            $ownerEmail = strtolower(trim($data['owner_email']));
+            $owner = User::withTrashed()->whereRaw('LOWER(email) = ?', [$ownerEmail])->first();
+            if (!$owner) {
+                $owner = User::create([
                     'id' => (string) Str::ulid(),
-                    'name' => $data['owner_name'],
+                    'name' => trim($data['owner_name']),
+                    'email' => $ownerEmail,
+                    'phone' => $data['phone'] ?? null,
                     'password' => $data['password'],
                     'is_internal' => false,
                     'is_active' => true,
-                ]
-            );
+                ]);
+            } else {
+                if ($owner->trashed()) {
+                    $owner->restore();
+                }
+                $owner->name = trim($data['owner_name']);
+                $owner->email = $ownerEmail;
+                if (!empty($data['password'])) {
+                    $owner->password = $data['password'];
+                }
+                $owner->is_active = true;
+                $owner->save();
+            }
 
             // 4. Attach TenantUser pivot
             TenantUser::firstOrCreate([

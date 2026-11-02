@@ -410,6 +410,13 @@ Route::middleware(['auth:sanctum', 'internal.admin'])->prefix('internal')->group
     Route::get('/master/plans', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listSubscriptionPlans']);
     Route::put('/master/plans/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateSubscriptionPlan']);
 
+    // Platform Users & Mitra Accounts Management
+    Route::get('/users', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listUsers']);
+    Route::post('/users', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'createUser']);
+    Route::put('/users/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateUser']);
+    Route::patch('/users/{id}/toggle', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'toggleUserStatus']);
+    Route::delete('/users/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'deleteUser']);
+
     // Platform Audit Logs
     Route::get('/audit-logs', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'auditLogs']);
 });
