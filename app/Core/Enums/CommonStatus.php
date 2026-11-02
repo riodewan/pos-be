@@ -6,4 +6,6 @@ enum CommonStatus: string
 {
     case ACTIVE = 'ACTIVE';
     case INACTIVE = 'INACTIVE';
+    case PENDING = 'PENDING';
+    case REJECTED = 'REJECTED';
 }

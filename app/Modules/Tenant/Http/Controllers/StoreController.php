@@ -39,9 +39,13 @@ class StoreController extends Controller
     public function store(CreateStoreRequest $request): JsonResponse
     {
         $tenant = AppContext::tenant();
-        $store = $this->storeService->createStore($tenant, $request->validated());
+        $store = $this->storeService->createStore($tenant, $request->validated(), $request->user());
 
-        return $this->success(new StoreResource($store), 'Store created successfully.', Response::HTTP_CREATED);
+        $msg = $request->user()?->isInternalAdmin()
+            ? 'Store created successfully.'
+            : 'Pengajuan cabang baru berhasil dikirim dan sedang menunggu approval Super Admin.';
+
+        return $this->success(new StoreResource($store), $msg, Response::HTTP_CREATED);
     }
 
     /**

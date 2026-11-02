@@ -18,3 +18,4 @@ return new class extends Migration
         DB::statement("ALTER TABLE tenants ADD CONSTRAINT chk_tenants_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED'))");
     }
 };
+

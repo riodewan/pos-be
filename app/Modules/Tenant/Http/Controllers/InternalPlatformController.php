@@ -237,23 +237,31 @@ class InternalPlatformController extends Controller
         ]);
 
         // Auto execute actions if needed (e.g. approve tenant verification or outlet)
-        if ($newStatus === 'APPROVED' && in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
-            $tenant = Tenant::find($approval->tenant_id);
-            if ($tenant) {
-                $tenant->update(['status' => 'ACTIVE']);
+        if ($newStatus === 'APPROVED') {
+            if (in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
+                $tenant = Tenant::find($approval->tenant_id);
+                if ($tenant) {
+                    $tenant->update(['status' => 'ACTIVE']);
 
-                // Ensure the tenant has at least one active store
-                if ($tenant->stores()->count() === 0) {
-                    $tenant->stores()->create([
-                        'name' => $tenant->name . ' - Outlet Pusat',
-                        'phone' => $tenant->phone ?: '08123456789',
-                        'address' => $tenant->address ?: 'Indonesia',
-                        'is_active' => true,
-                    ]);
+                    // Ensure the tenant has at least one active store
+                    if ($tenant->stores()->count() === 0) {
+                        $tenant->stores()->create([
+                            'name' => $tenant->name . ' - Outlet Pusat',
+                            'phone' => $tenant->phone ?: '08123456789',
+                            'address' => $tenant->address ?: 'Indonesia',
+                            'status' => \App\Core\Enums\CommonStatus::ACTIVE,
+                        ]);
+                    }
                 }
+            } elseif ($approval->type === 'STORE_CREATION' && $approval->store_id) {
+                Store::where('id', $approval->store_id)->update(['status' => \App\Core\Enums\CommonStatus::ACTIVE]);
             }
-        } elseif ($newStatus === 'REJECTED' && in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
-            Tenant::where('id', $approval->tenant_id)->update(['status' => 'PENDING']);
+        } elseif ($newStatus === 'REJECTED') {
+            if (in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
+                Tenant::where('id', $approval->tenant_id)->update(['status' => 'PENDING']);
+            } elseif ($approval->type === 'STORE_CREATION' && $approval->store_id) {
+                Store::where('id', $approval->store_id)->update(['status' => \App\Core\Enums\CommonStatus::REJECTED]);
+            }
         }
 
         return $this->success($approval->fresh(['tenant', 'reviewer']), "Pengajuan berhasil di-{$validated['action']}.");

@@ -43,11 +43,14 @@ class StoreService
     }
 
     /**
-     * Create a new store for tenant.
+     * Create a new store for tenant (requires Super Admin approval if created by merchant).
      */
-    public function createStore(Tenant $tenant, array $data): Store
+    public function createStore(Tenant $tenant, array $data, ?User $user = null): Store
     {
-        return Store::create([
+        $isInternal = $user && $user->isInternalAdmin();
+        $status = $isInternal ? CommonStatus::ACTIVE : CommonStatus::PENDING;
+
+        $store = Store::create([
             'id' => (string) Str::ulid(),
             'tenant_id' => $tenant->id,
             'name' => $data['name'],
@@ -55,8 +58,32 @@ class StoreService
             'address' => $data['address'] ?? null,
             'phone' => $data['phone'] ?? null,
             'timezone' => $data['timezone'] ?? 'Asia/Jakarta',
-            'status' => CommonStatus::ACTIVE,
+            'status' => $status,
         ]);
+
+        if (!$isInternal) {
+            \App\Modules\Tenant\Models\PlatformApproval::create([
+                'type' => 'STORE_CREATION',
+                'tenant_id' => $tenant->id,
+                'store_id' => $store->id,
+                'user_id' => $user?->id,
+                'title' => 'Pengajuan Cabang Baru - ' . $store->name,
+                'description' => 'Permohonan pembukaan outlet/cabang baru oleh mitra ' . $tenant->name,
+                'status' => 'PENDING',
+                'payload' => [
+                    'store_name' => $store->name,
+                    'branch_code' => $store->code,
+                    'address' => $store->address,
+                    'phone' => $store->phone,
+                    'category' => $data['category'] ?? 'Coffee Shop',
+                    'tenant_name' => $tenant->name,
+                    'submitted_by' => $user?->name ?? 'Owner',
+                    'submitted_at' => now()->toIso8601String(),
+                ],
+            ]);
+        }
+
+        return $store;
     }
 
     /**

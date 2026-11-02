@@ -60,23 +60,18 @@ class KybController extends Controller
             // Link user to tenant
             $tenant->users()->attach($user->id, ['joined_at' => now()]);
 
-            // Ensure Owner role
-            $ownerRole = Role::where('tenant_id', $tenant->id)->where('name', 'Owner')->first();
-            if (!$ownerRole) {
-                $ownerRole = Role::create([
+            // Create default tenant roles (Owner, Manager, Kasir, etc.) and assign Owner to user
+            $rbacService = app(\App\Modules\Rbac\Services\RbacService::class);
+            $defaultRoles = $rbacService->createDefaultTenantRoles($tenant);
+            $ownerRole = $defaultRoles['Owner'] ?? Role::where('tenant_id', $tenant->id)->where('name', 'Owner')->first();
+
+            if ($ownerRole) {
+                UserRole::firstOrCreate([
+                    'user_id' => $user->id,
+                    'role_id' => $ownerRole->id,
                     'tenant_id' => $tenant->id,
-                    'name' => 'Owner',
-                    'guard_name' => 'web',
-                    'scope' => 'TENANT',
-                    'description' => 'Tenant Owner / Pemilik Toko',
                 ]);
             }
-
-            UserRole::firstOrCreate([
-                'user_id' => $user->id,
-                'role_id' => $ownerRole->id,
-                'tenant_id' => $tenant->id,
-            ]);
         } else {
             // Update tenant details and keep pending review
             $tenant->update([
@@ -171,3 +166,4 @@ class KybController extends Controller
         ]);
     }
 }
+
