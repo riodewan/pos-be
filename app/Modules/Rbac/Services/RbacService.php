@@ -212,6 +212,26 @@ class RbacService
                     'product.view', 'menu.view',
                 ],
             ],
+            'Barista' => [
+                'description' => 'Akses Kitchen Display (KDS) minuman, melihat resep porsi, dan memproses pesanan minuman.',
+                'permissions' => [
+                    'store.view',
+                    'order.view', 'order.update',
+                    'recipe.view',
+                    'ingredient.view',
+                    'product.view', 'menu.view',
+                ],
+            ],
+            'Server' => [
+                'description' => 'Mengelola meja, reservasi, dan mengantar pesanan pelanggan dine-in.',
+                'permissions' => [
+                    'store.view',
+                    'order.view', 'order.create', 'order.update',
+                    'table.view', 'table.update',
+                    'qr.view',
+                    'product.view', 'menu.view',
+                ],
+            ],
         ];
 
         $createdRoles = [];

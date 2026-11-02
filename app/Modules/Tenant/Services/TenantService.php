@@ -132,34 +132,86 @@ class TenantService
     }
 
     /**
+     * Resolve a tenant role by ID or name (ensuring default roles exist).
+     */
+    protected function resolveTenantRole(Tenant $tenant, ?string $roleId = null, ?string $roleName = null): Role
+    {
+        $this->rbacService->createDefaultTenantRoles($tenant);
+
+        if (!empty($roleId)) {
+            $role = Role::where('tenant_id', $tenant->id)->find($roleId);
+            if ($role) {
+                return $role;
+            }
+        }
+
+        if (!empty($roleName)) {
+            $normalized = trim($roleName);
+            $aliasMap = [
+                'cashier' => 'Kasir',
+                'gudang' => 'Inventory',
+                'inventori' => 'Inventory',
+                'kitchen' => 'Dapur',
+            ];
+            $lookup = $aliasMap[strtolower($normalized)] ?? $normalized;
+
+            $role = Role::where('tenant_id', $tenant->id)
+                ->whereRaw('LOWER(name) = ?', [strtolower($lookup)])
+                ->first();
+            if ($role) {
+                return $role;
+            }
+        }
+
+        return Role::where('tenant_id', $tenant->id)
+            ->where('name', 'Kasir')
+            ->firstOrFail();
+    }
+
+    /**
      * Add a user to tenant and assign their initial role.
      */
     public function addMember(Tenant $tenant, array $data): TenantUser
     {
         return DB::transaction(function () use ($tenant, $data) {
-            $user = User::where('email', $data['email'])->first();
+            $email = strtolower(trim($data['email']));
+            $user = User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->first();
+            $isActive = array_key_exists('is_active', $data) && $data['is_active'] !== null
+                ? (bool) $data['is_active']
+                : true;
 
             if (!$user) {
-                $password = $data['password'] ?? Str::random(12);
-                $name = $data['name'] ?? explode('@', $data['email'])[0];
+                $password = !empty($data['password']) ? $data['password'] : 'password123';
+                $name = !empty($data['name']) ? trim($data['name']) : explode('@', $email)[0];
 
                 $user = User::create([
                     'id' => (string) Str::ulid(),
                     'name' => $name,
-                    'email' => $data['email'],
+                    'email' => $email,
                     'phone' => $data['phone'] ?? null,
                     'job_title' => $data['job_title'] ?? null,
-                    'password' => Hash::make($password),
+                    'password' => $password,
                     'is_internal' => false,
-                    'is_active' => true,
+                    'is_active' => $isActive,
                 ]);
             } else {
-                if (!empty($data['phone'])) {
+                if ($user->trashed()) {
+                    $user->restore();
+                }
+                $user->email = $email;
+                if (!empty($data['name'])) {
+                    $user->name = trim($data['name']);
+                }
+                if (array_key_exists('phone', $data)) {
                     $user->phone = $data['phone'];
                 }
-                if (!empty($data['name'])) {
-                    $user->name = $data['name'];
+                if (array_key_exists('job_title', $data)) {
+                    $user->job_title = $data['job_title'];
                 }
+                if (!empty($data['password'])) {
+                    $user->password = $data['password'];
+                }
+                $user->is_active = $isActive;
                 $user->save();
             }
 
@@ -175,15 +227,19 @@ class TenantService
                 ]
             );
 
-            // Assign initial role
-            $role = Role::findOrFail($data['role_id']);
+            // Resolve and assign role (replace previous role in this tenant so primary role is accurate)
+            $role = $this->resolveTenantRole($tenant, $data['role_id'] ?? null, $data['role_name'] ?? null);
             $storeId = $data['store_id'] ?? null;
+
+            UserRole::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->delete();
 
             $this->rbacService->assignRole($user, $role, $tenant->id, $storeId);
 
             $roles = UserRole::where('tenant_id', $tenant->id)
                 ->where('user_id', $user->id)
-                ->with(['role', 'store'])
+                ->with(['role.permissions', 'store'])
                 ->get();
 
             $membership->load('user');
@@ -279,30 +335,31 @@ class TenantService
             $user = User::findOrFail($userId);
 
             if (isset($data['name'])) {
-                $user->name = $data['name'];
+                $user->name = trim($data['name']);
             }
             if (isset($data['email'])) {
-                $user->email = $data['email'];
+                $user->email = strtolower(trim($data['email']));
             }
-            if (isset($data['phone'])) {
+            if (array_key_exists('phone', $data)) {
                 $user->phone = $data['phone'];
             }
-            if (isset($data['job_title'])) {
+            if (array_key_exists('job_title', $data)) {
                 $user->job_title = $data['job_title'];
             }
             if (isset($data['is_active'])) {
                 $user->is_active = (bool) $data['is_active'];
             }
             if (!empty($data['password'])) {
-                $user->password = Hash::make($data['password']);
+                $user->password = $data['password'];
             }
             $user->save();
 
-            // Update role if role_id provided
-            if (!empty($data['role_id'])) {
+            // Update role if role_id or role_name provided
+            if (!empty($data['role_id']) || !empty($data['role_name'])) {
+                $role = $this->resolveTenantRole($tenant, $data['role_id'] ?? null, $data['role_name'] ?? null);
                 $this->updateUserRoles($tenant, $userId, [
                     [
-                        'role_id' => $data['role_id'],
+                        'role_id' => $role->id,
                         'store_id' => $data['store_id'] ?? null,
                     ]
                 ]);
@@ -312,7 +369,7 @@ class TenantService
 
             $roles = UserRole::where('tenant_id', $tenant->id)
                 ->where('user_id', $userId)
-                ->with(['role', 'store'])
+                ->with(['role.permissions', 'store'])
                 ->get();
 
             $membership->load('user');

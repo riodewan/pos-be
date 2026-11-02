@@ -18,9 +18,11 @@ class AddTenantUserRequest extends FormRequest
             'name' => ['nullable', 'string', 'max:100'],
             'phone' => ['nullable', 'string', 'max:30'],
             'job_title' => ['nullable', 'string', 'max:100'],
-            'password' => ['nullable', 'string', 'min:8'],
-            'role_id' => ['required', 'string', 'exists:roles,id'],
+            'password' => ['nullable', 'string', 'min:6'],
+            'role_id' => ['nullable', 'string'],
+            'role_name' => ['nullable', 'string', 'max:100'],
             'store_id' => ['nullable', 'string', 'exists:stores,id'],
+            'is_active' => ['nullable', 'boolean'],
         ];
     }
 }

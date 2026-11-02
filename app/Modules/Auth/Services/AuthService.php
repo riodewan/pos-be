@@ -44,7 +44,7 @@ class AuthService
         ?string $ipAddress = null,
         ?string $userAgent = null
     ): array {
-        $user = User::where('email', strtolower(trim($email)))->first();
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower(trim($email))])->first();
 
         if (!$user || !Hash::check($password, $user->password)) {
             throw ValidationException::withMessages([

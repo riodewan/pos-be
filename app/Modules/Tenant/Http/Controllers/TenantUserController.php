@@ -60,11 +60,12 @@ class TenantUserController extends Controller
             'email' => 'sometimes|required|email|max:255',
             'phone' => 'nullable|string|max:30',
             'job_title' => 'nullable|string|max:100',
-            'role_id' => 'nullable|string|exists:roles,id',
+            'role_id' => 'nullable|string',
+            'role_name' => 'nullable|string|max:100',
             'store_id' => 'nullable|string|exists:stores,id',
             'roles' => 'nullable|array',
             'is_active' => 'nullable|boolean',
-            'password' => 'nullable|string|min:8',
+            'password' => 'nullable|string|min:6',
         ]);
 
         try {

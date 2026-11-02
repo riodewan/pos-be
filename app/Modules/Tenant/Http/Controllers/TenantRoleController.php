@@ -26,6 +26,9 @@ class TenantRoleController extends Controller
     {
         $tenant = AppContext::tenant();
 
+        // Ensure all default operational roles exist for this tenant
+        app(\App\Modules\Rbac\Services\RbacService::class)->createDefaultTenantRoles($tenant);
+
         $roles = Role::where('tenant_id', $tenant->id)
             ->with('permissions')
             ->withCount(['userRoles as staff_count' => function ($query) use ($tenant) {
@@ -77,12 +80,11 @@ class TenantRoleController extends Controller
             'description' => $validated['description'] ?? null,
         ]);
 
-        if (!empty($validated['permissions'])) {
-            $permIds = Permission::whereIn('id', $validated['permissions'])
-                ->orWhereIn('name', $validated['permissions'])
-                ->pluck('id');
-            $role->permissions()->sync($permIds);
-        }
+        $requestedPerms = array_unique(array_merge($validated['permissions'] ?? [], ['store.view']));
+        $permIds = Permission::whereIn('id', $requestedPerms)
+            ->orWhereIn('name', $requestedPerms)
+            ->pluck('id');
+        $role->permissions()->sync($permIds);
 
         $role->load('permissions');
         $role->staff_count = 0;
