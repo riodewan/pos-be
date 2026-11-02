@@ -7,10 +7,12 @@ use App\Core\Enums\OrderStatus;
 use App\Core\Traits\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Modules\Auth\Models\User;
+use App\Modules\Catalog\Models\Unit;
 use App\Modules\PosOrder\Models\Order;
 use App\Modules\System\Models\AuditLog;
 use App\Modules\Tenant\Models\PlatformApproval;
 use App\Modules\Tenant\Models\PlatformMasterCategory;
+use App\Modules\Tenant\Models\PlatformMasterItem;
 use App\Modules\Tenant\Models\PlatformSubscriptionPlan;
 use App\Modules\Tenant\Models\Store;
 use App\Modules\Tenant\Models\Tenant;
@@ -325,6 +327,131 @@ class InternalPlatformController extends Controller
         $category->delete();
 
         return $this->success(null, 'Kategori master berhasil dihapus.');
+    }
+
+    /**
+     * Master Data: Global Items (FACILITY, BUSINESS_TYPE, PAYMENT_METHOD, TAX_FEE, BANK).
+     */
+    public function listMasterItems(Request $request): JsonResponse
+    {
+        $group = $request->query('group');
+
+        $items = PlatformMasterItem::when($group, fn ($q) => $q->where('group', strtoupper($group)))
+            ->orderBy('group', 'asc')
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return $this->success($items);
+    }
+
+    public function storeMasterItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'group' => ['required', 'string', 'in:FACILITY,BUSINESS_TYPE,PAYMENT_METHOD,TAX_FEE,BANK'],
+            'name' => ['required', 'string', 'max:150'],
+            'code' => ['nullable', 'string', 'max:100'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'description' => ['nullable', 'string'],
+            'metadata' => ['nullable', 'array'],
+            'is_active' => ['nullable', 'boolean'],
+            'sort_order' => ['nullable', 'integer'],
+        ]);
+
+        $code = $validated['code'] ?? Str::slug($validated['name'], '_');
+
+        $item = PlatformMasterItem::create([
+            'group' => $validated['group'],
+            'name' => $validated['name'],
+            'code' => $code,
+            'icon' => $validated['icon'] ?? 'Sparkles',
+            'description' => $validated['description'] ?? null,
+            'metadata' => $validated['metadata'] ?? null,
+            'is_active' => $validated['is_active'] ?? true,
+            'sort_order' => $validated['sort_order'] ?? 0,
+        ]);
+
+        return $this->success($item, 'Item master global berhasil ditambahkan.', Response::HTTP_CREATED);
+    }
+
+    public function updateMasterItem(Request $request, string $id): JsonResponse
+    {
+        $item = PlatformMasterItem::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:150'],
+            'code' => ['nullable', 'string', 'max:100'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'description' => ['nullable', 'string'],
+            'metadata' => ['nullable', 'array'],
+            'is_active' => ['nullable', 'boolean'],
+            'sort_order' => ['nullable', 'integer'],
+        ]);
+
+        $item->update($validated);
+
+        return $this->success($item, 'Item master global berhasil diperbarui.');
+    }
+
+    public function toggleMasterItem(string $id): JsonResponse
+    {
+        $item = PlatformMasterItem::findOrFail($id);
+        $item->update(['is_active' => !$item->is_active]);
+
+        return $this->success($item, 'Status item master berhasil diperbarui.');
+    }
+
+    public function deleteMasterItem(string $id): JsonResponse
+    {
+        $item = PlatformMasterItem::findOrFail($id);
+        $item->delete();
+
+        return $this->success(null, 'Item master global berhasil dihapus.');
+    }
+
+    /**
+     * Master Data: Global Measurement Units.
+     */
+    public function listMasterUnits(): JsonResponse
+    {
+        $units = Unit::orderBy('name', 'asc')->get();
+        return $this->success($units);
+    }
+
+    public function storeMasterUnit(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'code' => ['required', 'string', 'max:20', 'unique:units,code'],
+            'type' => ['required', 'string', 'in:WEIGHT,VOLUME,COUNT'],
+        ]);
+
+        $unit = Unit::create($validated);
+
+        return $this->success($unit, 'Satuan ukur global berhasil ditambahkan.', Response::HTTP_CREATED);
+    }
+
+    public function updateMasterUnit(Request $request, string $id): JsonResponse
+    {
+        $unit = Unit::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:100'],
+            'code' => ['sometimes', 'required', 'string', 'max:20', 'unique:units,code,' . $unit->id],
+            'type' => ['sometimes', 'required', 'string', 'in:WEIGHT,VOLUME,COUNT'],
+        ]);
+
+        $unit->update($validated);
+
+        return $this->success($unit, 'Satuan ukur global berhasil diperbarui.');
+    }
+
+    public function deleteMasterUnit(string $id): JsonResponse
+    {
+        $unit = Unit::findOrFail($id);
+        $unit->delete();
+
+        return $this->success(null, 'Satuan ukur global berhasil dihapus.');
     }
 
     /**

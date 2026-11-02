@@ -26,6 +26,9 @@ Route::middleware('auth:sanctum')->prefix('tenant/kyb')->group(function () {
     Route::get('/categories', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'categories']);
 });
 
+// Global Master Data curated by Internal Admin (accessible to all authenticated users)
+Route::middleware('auth:sanctum')->get('tenant/master-data', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'globalMasterData']);
+
 /*
 |--------------------------------------------------------------------------
 | Tenant Management Routes
@@ -395,6 +398,17 @@ Route::middleware(['auth:sanctum', 'internal.admin'])->prefix('internal')->group
     Route::post('/master/categories', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'storeMasterCategory']);
     Route::put('/master/categories/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateMasterCategory']);
     Route::delete('/master/categories/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'deleteMasterCategory']);
+
+    Route::get('/master/items', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listMasterItems']);
+    Route::post('/master/items', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'storeMasterItem']);
+    Route::put('/master/items/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateMasterItem']);
+    Route::patch('/master/items/{id}/toggle', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'toggleMasterItem']);
+    Route::delete('/master/items/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'deleteMasterItem']);
+
+    Route::get('/master/units', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listMasterUnits']);
+    Route::post('/master/units', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'storeMasterUnit']);
+    Route::put('/master/units/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateMasterUnit']);
+    Route::delete('/master/units/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'deleteMasterUnit']);
 
     Route::get('/master/plans', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'listSubscriptionPlans']);
     Route::put('/master/plans/{id}', [\App\Modules\Tenant\Http\Controllers\InternalPlatformController::class, 'updateSubscriptionPlan']);

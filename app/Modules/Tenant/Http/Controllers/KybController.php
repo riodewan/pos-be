@@ -202,9 +202,39 @@ class KybController extends Controller
     {
         $categories = \App\Modules\Tenant\Models\PlatformMasterCategory::where('is_active', true)
             ->orderBy('sort_order')
-            ->get(['id', 'name', 'slug']);
+            ->get(['id', 'name', 'slug', 'icon', 'description']);
 
         return $this->success($categories);
+    }
+
+    /**
+     * Global Master Data managed by Internal Admin, accessible to all authenticated users/merchants.
+     */
+    public function globalMasterData(): JsonResponse
+    {
+        $categories = \App\Modules\Tenant\Models\PlatformMasterCategory::where('is_active', true)
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('name', 'asc')
+            ->get(['id', 'name', 'slug', 'icon', 'description', 'sort_order']);
+
+        $items = \App\Modules\Tenant\Models\PlatformMasterItem::where('is_active', true)
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('name', 'asc')
+            ->get(['id', 'group', 'name', 'code', 'icon', 'description', 'metadata', 'sort_order'])
+            ->groupBy('group');
+
+        $units = \App\Modules\Catalog\Models\Unit::orderBy('name', 'asc')
+            ->get(['id', 'name', 'code', 'type']);
+
+        return $this->success([
+            'categories' => $categories,
+            'facilities' => ($items->get('FACILITY') ?? collect())->values(),
+            'business_types' => ($items->get('BUSINESS_TYPE') ?? collect())->values(),
+            'payment_methods' => ($items->get('PAYMENT_METHOD') ?? collect())->values(),
+            'tax_fees' => ($items->get('TAX_FEE') ?? collect())->values(),
+            'banks' => ($items->get('BANK') ?? collect())->values(),
+            'units' => $units,
+        ]);
     }
 
     /**
