@@ -18,6 +18,7 @@ class WastageResource extends JsonResource
             'reason' => $this->reason,
             'notes' => $this->notes,
             'created_by' => $this->created_by,
+            'created_by_name' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->name),
             'items' => WastageItemResource::collection($this->whenLoaded('wastageItems')),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

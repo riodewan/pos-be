@@ -24,6 +24,7 @@ class InventoryMovementResource extends JsonResource
             'reference_id' => $this->reference_id,
             'notes' => $this->notes,
             'created_by' => $this->created_by,
+            'created_by_name' => $this->whenLoaded('createdBy', fn () => $this->createdBy?->name),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

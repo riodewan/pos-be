@@ -230,10 +230,6 @@ class InventoryService
             $oldQty = (float) $stock->quantity;
             $diff = $newQuantity - $oldQty;
 
-            if ($diff == 0) {
-                throw new InvalidArgumentException('New quantity matches existing stock. No adjustment needed.');
-            }
-
             $stock->update(['quantity' => $newQuantity]);
 
             InventoryMovement::create([
@@ -245,11 +241,66 @@ class InventoryService
                 'quantity' => $diff,
                 'reference_type' => 'ADJUSTMENT',
                 'reference_id' => $stock->id,
-                'notes' => $notes,
+                'notes' => "[System:{$oldQty}|Fisik:{$newQuantity}] " . $notes,
                 'created_by' => $userId,
             ]);
 
             return $stock->fresh(['ingredient.unit']);
+        });
+    }
+
+    public function recordStockIn(array $data, ?string $userId = null): InventoryMovement
+    {
+        $storeId = AppContext::storeId();
+        $ingredientId = $data['ingredient_id'];
+        $qty = (float) $data['quantity'];
+
+        if ($qty <= 0) {
+            throw new InvalidArgumentException('Stock in quantity must be greater than zero.');
+        }
+
+        $ingredient = Ingredient::withoutGlobalScope('store')
+            ->where('id', $ingredientId)
+            ->where('store_id', $storeId)
+            ->first();
+
+        if (!$ingredient) {
+            throw new InvalidArgumentException('The selected ingredient does not belong to the current store.');
+        }
+
+        return DB::transaction(function () use ($storeId, $ingredient, $ingredientId, $qty, $data, $userId) {
+            $stock = InventoryStock::withoutGlobalScope('store')
+                ->where('store_id', $storeId)
+                ->where('ingredient_id', $ingredientId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$stock) {
+                $stock = InventoryStock::create([
+                    'id' => (string) Str::ulid(),
+                    'store_id' => $storeId,
+                    'ingredient_id' => $ingredientId,
+                    'quantity' => 0,
+                    'average_cost' => (float) ($ingredient->cost_price ?? 0),
+                ]);
+            }
+
+            $stock->increment('quantity', $qty);
+
+            $movement = InventoryMovement::create([
+                'id' => (string) Str::ulid(),
+                'store_id' => $storeId,
+                'ingredient_id' => $ingredientId,
+                'unit_id' => $ingredient->unit_id,
+                'type' => MovementType::PURCHASE,
+                'quantity' => $qty,
+                'reference_type' => $data['source_type'] ?? 'Pembelian Langsung',
+                'reference_id' => $stock->id,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $userId,
+            ]);
+
+            return $movement->load(['ingredient', 'unit', 'createdBy']);
         });
     }
 
@@ -259,11 +310,11 @@ class InventoryService
 
     public function listMovements(?string $ingredientId = null, ?string $type = null): LengthAwarePaginator
     {
-        return InventoryMovement::with(['ingredient', 'unit'])
+        return InventoryMovement::with(['ingredient', 'unit', 'createdBy'])
             ->when($ingredientId, fn ($q) => $q->where('ingredient_id', $ingredientId))
             ->when($type, fn ($q) => $q->where('type', $type))
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(50);
     }
 
     // ==========================================
@@ -272,7 +323,7 @@ class InventoryService
 
     public function listWastages(): Collection
     {
-        return Wastage::with(['wastageItems.ingredient', 'wastageItems.unit'])
+        return Wastage::with(['wastageItems.ingredient', 'wastageItems.unit', 'createdBy'])
             ->orderBy('created_at', 'desc')
             ->get();
     }

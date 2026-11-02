@@ -137,6 +137,20 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->prefix('
         ->middleware('permission:unit.view');
     Route::post('/units', [\App\Modules\Catalog\Http\Controllers\UnitController::class, 'store'])
         ->middleware('permission:unit.create');
+    Route::put('/units/{id}', [\App\Modules\Catalog\Http\Controllers\UnitController::class, 'update'])
+        ->middleware('permission:unit.create');
+    Route::delete('/units/{id}', [\App\Modules\Catalog\Http\Controllers\UnitController::class, 'destroy'])
+        ->middleware('permission:unit.create');
+
+    // Ingredient Categories (Store-scoped)
+    Route::get('/ingredient-categories', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'categories'])
+        ->middleware('permission:ingredient.view');
+    Route::post('/ingredient-categories', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'storeCategory'])
+        ->middleware('permission:ingredient.create');
+    Route::put('/ingredient-categories/{id}', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'updateCategory'])
+        ->middleware('permission:ingredient.update');
+    Route::delete('/ingredient-categories/{id}', [\App\Modules\Catalog\Http\Controllers\IngredientController::class, 'destroyCategory'])
+        ->middleware('permission:ingredient.delete');
 
     // Products
     Route::get('/products', [\App\Modules\Catalog\Http\Controllers\ProductController::class, 'index'])
@@ -251,6 +265,8 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::get('/stocks/{ingredientId}', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'show'])
             ->middleware('permission:inventory.view');
         Route::post('/adjustments', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'adjust'])
+            ->middleware('permission:inventory.adjust');
+        Route::post('/stock-in', [\App\Modules\Inventory\Http\Controllers\InventoryStockController::class, 'stockIn'])
             ->middleware('permission:inventory.adjust');
 
         // Movements (Audit Ledger)

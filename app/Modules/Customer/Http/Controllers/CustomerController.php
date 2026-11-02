@@ -34,11 +34,34 @@ class CustomerController extends Controller
             $query->orderBy($sortBy, $sortOrder === 'asc' ? 'asc' : 'desc');
         }
 
-        $customers = $query->paginate((int) $request->query('per_page', 20));
+        $customers = $query->with(['orders' => function ($q) {
+            $q->with(['items.product', 'payments'])->orderBy('created_at', 'desc')->limit(10);
+        }])->paginate((int) $request->query('per_page', 20));
+
+        $items = collect($customers->items())->map(function (Customer $c) {
+            $data = $c->toArray();
+            $data['transactions'] = $c->orders->map(function ($order) {
+                $summary = $order->items->map(function ($it) {
+                    $pName = $it->product?->name ?? $it->product_name ?? 'Item';
+                    return ((int) $it->quantity) . 'x ' . $pName;
+                })->implode(', ');
+                $payMethod = $order->payments->first()?->method ?? $order->payment_method ?? 'QRIS';
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number ?? ('ORD-' . strtoupper(substr($order->id, -6))),
+                    'date' => $order->created_at?->format('d M Y, H:i') ?? '-',
+                    'items_summary' => $summary ?: 'Pesanan POS',
+                    'total_amount' => (float) ($order->grand_total ?? $order->total_amount ?? 0),
+                    'payment_method' => $payMethod,
+                    'points_earned' => (int) floor(((float) ($order->grand_total ?? $order->total_amount ?? 0)) / 10000),
+                ];
+            })->values()->all();
+            return $data;
+        })->all();
 
         return response()->json([
             'message' => 'Customers retrieved successfully.',
-            'data' => $customers->items(),
+            'data' => $items,
             'pagination' => [
                 'current_page' => $customers->currentPage(),
                 'per_page' => $customers->perPage(),

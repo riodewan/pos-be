@@ -21,6 +21,7 @@ class CreateIngredientRequest extends FormRequest
 
         return [
             'unit_id' => ['nullable', 'string', 'exists:units,id'],
+            'unit' => ['nullable', 'string', 'max:50'],
             'name' => ['required', 'string', 'max:100'],
             'sku' => [
                 'required',
@@ -34,9 +35,11 @@ class CreateIngredientRequest extends FormRequest
             'category' => ['nullable', 'string', 'max:50'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
             'min_stock' => ['nullable', 'numeric', 'min:0'],
+            'current_stock' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'image_url' => ['nullable', 'string', 'max:500'],
             'supplier_id' => ['nullable', 'string', 'exists:suppliers,id'],
+            'supplier_name' => ['nullable', 'string', 'max:100'],
             'storage_location' => ['nullable', 'string', 'max:100'],
             'shelf_life_value' => ['nullable', 'integer', 'min:0'],
             'shelf_life_unit' => ['nullable', 'string', 'max:20'],

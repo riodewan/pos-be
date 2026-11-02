@@ -9,6 +9,7 @@ use App\Modules\Catalog\Http\Requests\UpdateIngredientRequest;
 use App\Modules\Catalog\Http\Resources\IngredientResource;
 use App\Modules\Catalog\Services\CatalogService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class IngredientController extends Controller
@@ -54,5 +55,47 @@ class IngredientController extends Controller
         $this->catalogService->deleteIngredient($ingredient);
 
         return $this->success(null, 'Ingredient deleted successfully.');
+    }
+
+    public function categories(): JsonResponse
+    {
+        $categories = $this->catalogService->listIngredientCategories();
+
+        return $this->success($categories);
+    }
+
+    public function storeCategory(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:50'],
+            'code' => ['nullable', 'string', 'max:20'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $category = $this->catalogService->saveIngredientCategory($validated);
+
+        return $this->success($category, 'Kategori bahan berhasil ditambahkan.', Response::HTTP_CREATED);
+    }
+
+    public function updateCategory(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:50'],
+            'code' => ['nullable', 'string', 'max:20'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $category = $this->catalogService->saveIngredientCategory($validated, $id);
+
+        return $this->success($category, 'Kategori bahan berhasil diperbarui.');
+    }
+
+    public function destroyCategory(string $id): JsonResponse
+    {
+        $this->catalogService->deleteIngredientCategory($id);
+
+        return $this->success(null, 'Kategori bahan berhasil dihapus.');
     }
 }
