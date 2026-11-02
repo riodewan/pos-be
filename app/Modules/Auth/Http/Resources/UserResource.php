@@ -25,6 +25,7 @@ class UserResource extends JsonResource
                         'name' => $t->name,
                         'slug' => $t->slug,
                         'status' => $t->status?->value ?? $t->status,
+                        'onboarded' => $t->onboarded_at !== null,
                         'role' => 'SUPER_ADMIN',
                     ]);
                 }
@@ -34,6 +35,7 @@ class UserResource extends JsonResource
                     'name' => $t->name,
                     'slug' => $t->slug,
                     'status' => $t->status?->value ?? $t->status,
+                        'onboarded' => $t->onboarded_at !== null,
                     'role' => $this->relationLoaded('userRoles') 
                         ? ($this->userRoles->firstWhere('tenant_id', $t->id)?->role?->name ?? 'STAFF')
                         : 'STAFF',

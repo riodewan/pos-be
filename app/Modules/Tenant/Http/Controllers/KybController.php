@@ -182,6 +182,20 @@ class KybController extends Controller
     }
 
     /**
+     * Mark first-login onboarding (owner profile + outlet profile) as completed for the active tenant.
+     */
+    public function completeOnboarding(Request $request): JsonResponse
+    {
+        $tenant = \App\Core\Context\AppContext::tenant();
+
+        if (!$tenant->onboarded_at) {
+            $tenant->update(['onboarded_at' => now()]);
+        }
+
+        return $this->success(['onboarded' => true], 'Onboarding selesai.');
+    }
+
+    /**
      * Active business categories from master data (for KYB form).
      */
     public function categories(): JsonResponse

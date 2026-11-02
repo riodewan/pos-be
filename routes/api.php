@@ -36,6 +36,9 @@ Route::middleware('auth:sanctum')->prefix('tenant/kyb')->group(function () {
 |
 */
 Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(function () {
+    // First-login onboarding completion
+    Route::post('/onboarding/complete', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'completeOnboarding']);
+
     // Tenant Profile
     Route::get('/profile', [\App\Modules\Tenant\Http\Controllers\TenantProfileController::class, 'show'])
         ->middleware('permission:tenant.view');

@@ -36,12 +36,14 @@ class Tenant extends Model
         'phone',
         'address',
         'status',
+        'onboarded_at',
     ];
 
     protected function casts(): array
     {
         return [
             'status' => TenantStatus::class,
+            'onboarded_at' => 'datetime',
         ];
     }
 
