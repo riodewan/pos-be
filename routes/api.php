@@ -100,7 +100,10 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
     // Notifications
     Route::get('/notifications', [\App\Modules\System\Http\Controllers\NotificationController::class, 'index']);
     Route::patch('/notifications/{id}/read', [\App\Modules\System\Http\Controllers\NotificationController::class, 'markRead']);
+    Route::patch('/notifications/{id}/unread', [\App\Modules\System\Http\Controllers\NotificationController::class, 'markUnread']);
+    Route::delete('/notifications/{id}', [\App\Modules\System\Http\Controllers\NotificationController::class, 'destroy']);
     Route::post('/notifications/mark-all-read', [\App\Modules\System\Http\Controllers\NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/clear-all', [\App\Modules\System\Http\Controllers\NotificationController::class, 'clearAll']);
 });
 
 /*

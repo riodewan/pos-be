@@ -181,6 +181,19 @@ class OrderService
                 app(\App\Modules\Customer\Services\CustomerSyncService::class)->recalculateCustomerStats($customer);
             }
 
+            // Create in-app operational notification
+            try {
+                \App\Modules\System\Models\Notification::create([
+                    'tenant_id' => AppContext::tenantId(),
+                    'store_id' => $storeId,
+                    'title' => "Pesanan Kasir #{$order->order_number}",
+                    'subtitle' => "Pesanan {$order->channel} senilai Rp " . number_format($order->total_amount, 0, ',', '.') . " berhasil dibuat.",
+                    'category' => 'Pesanan',
+                    'is_read' => false,
+                    'target_url' => '/dashboard/orders',
+                ]);
+            } catch (\Throwable $e) {}
+
             return $order->load(['table', 'orderItems.product']);
         });
     }
@@ -337,6 +350,20 @@ class OrderService
                     'auto_complete' => false,
                 ]);
             }
+
+            // Create in-app operational notification for QR Order
+            try {
+                $tableName = $qrCode->table ? "Meja " . ($qrCode->table->table_number ?? $qrCode->table->name ?? '01') : 'Meja Pelanggan';
+                \App\Modules\System\Models\Notification::create([
+                    'tenant_id' => $tenantId,
+                    'store_id' => $storeId,
+                    'title' => "Pesanan QR Masuk #{$order->order_number}",
+                    'subtitle' => "{$tableName} telah mengirimkan pesanan mandiri senilai Rp " . number_format($order->total_amount, 0, ',', '.') . ".",
+                    'category' => 'Pesanan',
+                    'is_read' => false,
+                    'target_url' => '/dashboard/orders',
+                ]);
+            } catch (\Throwable $e) {}
 
             return $order->fresh(['table', 'orderItems.product', 'payments']);
         });

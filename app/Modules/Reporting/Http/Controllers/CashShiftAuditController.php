@@ -88,6 +88,19 @@ class CashShiftAuditController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
+        // In-app notification for cash audit
+        try {
+            \App\Modules\System\Models\Notification::create([
+                'tenant_id' => AppContext::tenantId(),
+                'store_id' => AppContext::storeId(),
+                'title' => "Audit Kas Shift {$validated['shift_name']} Dicatat",
+                'subtitle' => "Shift tanggal " . ($validated['shift_date'] ?? now()->toDateString()) . " berhasil dicatat ke sistem keuangan.",
+                'category' => 'Sistem',
+                'is_read' => false,
+                'target_url' => '/dashboard/finance',
+            ]);
+        } catch (\Throwable $e) {}
+
         return response()->json(['message' => 'Cash audit saved successfully.', 'data' => $audit], 201);
     }
 

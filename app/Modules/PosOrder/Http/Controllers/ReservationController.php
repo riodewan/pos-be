@@ -80,6 +80,19 @@ class ReservationController extends Controller
 
         $reservation->load('table');
 
+        // Create in-app operational notification for Reservation
+        try {
+            \App\Modules\System\Models\Notification::create([
+                'tenant_id' => AppContext::tenantId(),
+                'store_id' => AppContext::storeId(),
+                'title' => "Reservasi Baru Menunggu Konfirmasi #{$reservationNumber}",
+                'subtitle' => "{$validated['customer_name']} memesan meja untuk {$validated['guest_count']} tamu pada {$validated['reservation_date']} ({$validated['reservation_time']}).",
+                'category' => 'Reservasi',
+                'is_read' => false,
+                'target_url' => '/dashboard/reservations',
+            ]);
+        } catch (\Throwable $e) {}
+
         return response()->json([
             'message' => 'Reservation created successfully.',
             'data' => $reservation,
