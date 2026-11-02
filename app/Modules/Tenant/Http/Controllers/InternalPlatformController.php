@@ -237,8 +237,23 @@ class InternalPlatformController extends Controller
         ]);
 
         // Auto execute actions if needed (e.g. approve tenant verification or outlet)
-        if ($newStatus === 'APPROVED' && $approval->type === 'TENANT_REGISTRATION' && $approval->tenant_id) {
-            Tenant::where('id', $approval->tenant_id)->update(['status' => 'ACTIVE']);
+        if ($newStatus === 'APPROVED' && in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
+            $tenant = Tenant::find($approval->tenant_id);
+            if ($tenant) {
+                $tenant->update(['status' => 'ACTIVE']);
+
+                // Ensure the tenant has at least one active store
+                if ($tenant->stores()->count() === 0) {
+                    $tenant->stores()->create([
+                        'name' => $tenant->name . ' - Outlet Pusat',
+                        'phone' => $tenant->phone ?: '08123456789',
+                        'address' => $tenant->address ?: 'Indonesia',
+                        'is_active' => true,
+                    ]);
+                }
+            }
+        } elseif ($newStatus === 'REJECTED' && in_array($approval->type, ['KYB_VERIFICATION', 'TENANT_REGISTRATION']) && $approval->tenant_id) {
+            Tenant::where('id', $approval->tenant_id)->update(['status' => 'PENDING']);
         }
 
         return $this->success($approval->fresh(['tenant', 'reviewer']), "Pengajuan berhasil di-{$validated['action']}.");

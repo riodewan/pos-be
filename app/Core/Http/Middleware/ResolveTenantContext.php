@@ -57,13 +57,14 @@ class ResolveTenantContext
             }
         }
 
-        // Enforce active tenant status (internal admin is exempt)
+        // Enforce active tenant status (internal admin is exempt; KYB endpoints allow PENDING/REJECTED for onboarding)
+        $isKybRoute = $request->is('api/tenant/kyb*') || $request->is('*/kyb*');
         $tenantStatus = $tenant->status instanceof \App\Core\Enums\TenantStatus 
             ? $tenant->status->value 
             : (is_string($tenant->status) ? $tenant->status : 'ACTIVE');
 
-        if ($tenantStatus !== 'ACTIVE' && (!$user || !$user->isInternalAdmin())) {
-            return $this->forbidden('This tenant account is currently suspended or inactive.');
+        if (!$isKybRoute && $tenantStatus !== 'ACTIVE' && (!$user || !$user->isInternalAdmin())) {
+            return $this->forbidden('This tenant account is currently suspended, pending, or inactive.');
         }
 
         // Bind to context
