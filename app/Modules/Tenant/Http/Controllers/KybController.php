@@ -56,6 +56,22 @@ class KybController extends Controller
             $tenant = $user->tenants()->first();
 
             if (!$tenant) {
+                // Remove orphan tenants (no members) left by earlier failed attempts that hold this email
+                Tenant::withTrashed()
+                    ->where('email', $user->email)
+                    ->whereDoesntHave('tenantUsers')
+                    ->get()
+                    ->each(function ($orphan) {
+                        PlatformApproval::where('tenant_id', $orphan->id)->delete();
+                        $orphan->forceDelete();
+                    });
+
+                if (Tenant::where('email', $user->email)->exists()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'business_name' => ['Email akun ini sudah terhubung dengan tenant lain.'],
+                    ]);
+                }
+
                 $baseSlug = Str::slug($validated['business_name']) ?: 'toko';
 
                 $tenant = Tenant::create([
