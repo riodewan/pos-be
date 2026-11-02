@@ -34,12 +34,6 @@ class SettingController extends Controller
     {
         $value = $this->settingService->get($key);
 
-        if ($value === null) {
-            return response()->json([
-                'message' => "Setting '{$key}' not found.",
-            ], 404);
-        }
-
         return response()->json([
             'message' => 'Setting retrieved successfully.',
             'data' => [

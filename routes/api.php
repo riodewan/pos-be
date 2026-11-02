@@ -116,12 +116,9 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('system')->group(f
         ->middleware('permission:audit.view');
 
     // Settings
-    Route::get('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'index'])
-        ->middleware('permission:tenant.settings');
-    Route::post('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'store'])
-        ->middleware('permission:tenant.settings');
-    Route::get('/settings/{key}', [\App\Modules\System\Http\Controllers\SettingController::class, 'show'])
-        ->middleware('permission:tenant.settings');
+    Route::get('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'index']);
+    Route::post('/settings', [\App\Modules\System\Http\Controllers\SettingController::class, 'store']);
+    Route::get('/settings/{key}', [\App\Modules\System\Http\Controllers\SettingController::class, 'show']);
 });
 
 
