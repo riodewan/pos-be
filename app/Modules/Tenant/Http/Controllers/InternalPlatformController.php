@@ -46,12 +46,16 @@ class InternalPlatformController extends Controller
         $totalUsers = User::count();
         $totalOrders = Order::withoutGlobalScope('store')->where('status', OrderStatus::COMPLETED)->count();
         $totalGmv = (float) Order::withoutGlobalScope('store')->where('status', OrderStatus::COMPLETED)->sum('total_amount');
+        $totalPlatformRevenue = (float) Order::withoutGlobalScope('store')->where('status', OrderStatus::COMPLETED)->sum('service_charge');
+        $totalMerchantTax = (float) Order::withoutGlobalScope('store')->where('status', OrderStatus::COMPLETED)->sum('tax_amount');
+        $totalMerchantRevenue = max(0.0, round($totalGmv - $totalPlatformRevenue, 2));
         $pendingApprovals = PlatformApproval::where('status', 'PENDING')->count();
 
         $recentTenants = Tenant::withCount(['stores', 'tenantUsers'])
             ->orderBy('created_at', 'desc')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(fn (Tenant $t) => $this->enrichTenantFeeSettings($t));
 
         $recentApprovals = PlatformApproval::with(['tenant', 'reviewer'])
             ->orderBy('created_at', 'desc')
@@ -66,6 +70,9 @@ class InternalPlatformController extends Controller
                 'total_users' => $totalUsers,
                 'total_orders' => $totalOrders,
                 'total_gmv' => $totalGmv,
+                'total_platform_revenue' => $totalPlatformRevenue,
+                'total_merchant_revenue' => $totalMerchantRevenue,
+                'total_merchant_tax' => $totalMerchantTax,
                 'pending_approvals' => $pendingApprovals,
             ],
             'recent_tenants' => $recentTenants,
@@ -109,6 +116,38 @@ class InternalPlatformController extends Controller
 
         $tenant->setAttribute('platform_fee_percentage', $platformFeePct);
         $tenant->setAttribute('tax_percentage', $taxPct);
+
+        // Calculate platform revenue (hak kita) vs merchant net revenue + tax (hak mitra) for this tenant
+        $storeIds = Store::where('tenant_id', $tenant->id)->pluck('id');
+        if ($storeIds->isNotEmpty()) {
+            $orderAgg = Order::withoutGlobalScope('store')
+                ->whereIn('store_id', $storeIds)
+                ->where('status', OrderStatus::COMPLETED)
+                ->selectRaw('
+                    COUNT(id) as total_orders,
+                    COALESCE(SUM(total_amount), 0) as total_gmv,
+                    COALESCE(SUM(service_charge), 0) as platform_revenue,
+                    COALESCE(SUM(tax_amount), 0) as tax_collected
+                ')
+                ->first();
+
+            $tenantGmv = (float) ($orderAgg->total_gmv ?? 0);
+            $tenantPlatformRev = (float) ($orderAgg->platform_revenue ?? 0);
+            $tenantTax = (float) ($orderAgg->tax_collected ?? 0);
+            $tenantMerchantRev = max(0.0, round($tenantGmv - $tenantPlatformRev, 2));
+
+            $tenant->setAttribute('total_orders_completed', (int) ($orderAgg->total_orders ?? 0));
+            $tenant->setAttribute('total_gmv', $tenantGmv);
+            $tenant->setAttribute('platform_revenue', $tenantPlatformRev);
+            $tenant->setAttribute('merchant_net_revenue', $tenantMerchantRev);
+            $tenant->setAttribute('tax_collected', $tenantTax);
+        } else {
+            $tenant->setAttribute('total_orders_completed', 0);
+            $tenant->setAttribute('total_gmv', 0.0);
+            $tenant->setAttribute('platform_revenue', 0.0);
+            $tenant->setAttribute('merchant_net_revenue', 0.0);
+            $tenant->setAttribute('tax_collected', 0.0);
+        }
 
         return $tenant;
     }

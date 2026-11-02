@@ -24,6 +24,7 @@ class FinanceReconciliationController extends Controller
 
         $grossSales = (float) $payments->sum('amount');
         $totalMdr = (float) $payments->sum('mdr_fee');
+        $totalTax = (float) $payments->sum(fn ($p) => (float) ($p->order?->tax_amount ?? 0));
         $netSettlement = (float) $payments->sum('net_amount');
 
         if ($netSettlement == 0 && $grossSales > 0) {
@@ -34,6 +35,7 @@ class FinanceReconciliationController extends Controller
         $methodsBreakdown = $payments->groupBy('method')->map(function ($group, $method) {
             $gross = (float) $group->sum('amount');
             $mdr = (float) $group->sum('mdr_fee');
+            $tax = (float) $group->sum(fn ($p) => (float) ($p->order?->tax_amount ?? 0));
             $net = (float) $group->sum('net_amount');
             if ($net == 0) $net = $gross - $mdr;
 
@@ -41,6 +43,7 @@ class FinanceReconciliationController extends Controller
                 'method' => $method,
                 'count' => $group->count(),
                 'gross_amount' => $gross,
+                'tax_amount' => $tax,
                 'mdr_fee' => $mdr,
                 'net_amount' => $net,
             ];
@@ -54,6 +57,7 @@ class FinanceReconciliationController extends Controller
                 'order_number' => $payment->order?->order_number ?? '-',
                 'method' => $payment->method,
                 'gross_amount' => (float) $payment->amount,
+                'tax_amount' => (float) ($payment->order?->tax_amount ?? 0),
                 'mdr_fee' => (float) $payment->mdr_fee,
                 'net_amount' => (float) ($payment->net_amount > 0 ? $payment->net_amount : ($payment->amount - $payment->mdr_fee)),
                 'settlement_status' => $payment->settlement_status ?? 'SELESAI',
@@ -70,6 +74,7 @@ class FinanceReconciliationController extends Controller
                 ],
                 'totals' => [
                     'gross_sales' => $grossSales,
+                    'total_tax' => $totalTax,
                     'total_mdr' => $totalMdr,
                     'net_settlement' => $netSettlement,
                     'transaction_count' => $payments->count(),

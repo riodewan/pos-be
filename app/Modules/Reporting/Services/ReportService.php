@@ -72,8 +72,10 @@ class ReportService
         $totalDiscounts = (float) ($summary->total_discounts ?? 0);
         $totalTax = (float) ($summary->total_tax ?? 0);
         $totalService = (float) ($summary->total_service ?? 0);
-        $totalRevenue = (float) ($summary->total_revenue ?? 0);
         $netSales = max(0, $grossSales - $totalDiscounts);
+        // Hak Mitra: Penjualan Bersih (Subtotal - Diskon) + Pajak Toko.
+        // Biaya Layanan Platform (service_charge) masuk ke Internal Admin (Platform), bukan pendapatan Mitra.
+        $totalRevenue = round($netSales + $totalTax, 2);
         $aov = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0.0;
 
         return [
@@ -86,8 +88,10 @@ class ReportService
                 'gross_sales' => $grossSales,
                 'total_discounts' => $totalDiscounts,
                 'net_sales' => $netSales,
+                'tax' => $totalTax,
                 'total_tax' => $totalTax,
-                'total_service' => $totalService,
+                'service_charge' => 0.0,
+                'total_service' => 0.0,
                 'total_revenue' => $totalRevenue,
                 'average_order_value' => $aov,
             ],
@@ -113,7 +117,7 @@ class ReportService
                 COALESCE(SUM(subtotal), 0) as gross_sales,
                 COALESCE(SUM(discount_amount), 0) as discount_amount,
                 COALESCE(SUM(subtotal - discount_amount), 0) as net_sales,
-                COALESCE(SUM(total_amount), 0) as total_revenue
+                COALESCE(SUM(total_amount - COALESCE(service_charge, 0)), 0) as total_revenue
             ")
             ->groupBy(DB::raw("TO_CHAR(created_at, 'YYYY-MM-DD')"))
             ->orderBy('date', 'asc')
@@ -181,7 +185,7 @@ class ReportService
             ->selectRaw('
                 p.method,
                 COUNT(p.id) as payment_count,
-                COALESCE(SUM(p.amount), 0) as total_amount
+                COALESCE(SUM(CASE WHEN p.net_amount > 0 THEN p.net_amount ELSE (p.amount - COALESCE(p.mdr_fee, 0)) END), 0) as total_amount
             ')
             ->groupBy('p.method')
             ->orderByDesc('total_amount')
@@ -321,7 +325,7 @@ class ReportService
             ->selectRaw("
                 COALESCE(channel, source) as channel_name,
                 COUNT(id) as count,
-                COALESCE(SUM(total_amount), 0) as total_amount
+                COALESCE(SUM(total_amount - COALESCE(service_charge, 0)), 0) as total_amount
             ")
             ->groupBy('channel_name')
             ->orderByDesc('count')
