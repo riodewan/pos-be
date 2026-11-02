@@ -14,16 +14,35 @@ class CashShiftAuditController extends Controller
 {
     public function index(): JsonResponse
     {
-        $audits = CashShiftAudit::orderByDesc('shift_date')->orderByDesc('created_at')->limit(50)->get();
+        $storeId = AppContext::storeId();
+        $tenantId = AppContext::tenantId();
+
+        $auditsQuery = CashShiftAudit::orderByDesc('shift_date')->orderByDesc('created_at')->limit(50);
+        if ($storeId) {
+            $auditsQuery->where('store_id', $storeId);
+        } elseif ($tenantId) {
+            $auditsQuery->whereIn('store_id', function ($sub) use ($tenantId) {
+                $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+            });
+        }
+        $audits = $auditsQuery->get();
         $users = User::whereIn('id', $audits->pluck('cashier_id')->filter())->pluck('name', 'id');
 
-        $data = $audits->map(function (CashShiftAudit $a) use ($users) {
+        $data = $audits->map(function (CashShiftAudit $a) use ($users, $storeId, $tenantId) {
             $cashSales = (float) Payment::where('status', 'SUCCESS')
                 ->where('method', 'CASH')
                 ->whereDate('paid_at', $a->shift_date)
-                ->whereHas('order', fn ($q) => $a->cashier_id ? $q->where('created_by', $a->cashier_id) : $q)
+                ->whereHas('order', function ($q) use ($a, $storeId, $tenantId) {
+                    $q->when($storeId, fn ($sq) => $sq->where('store_id', $storeId))
+                      ->when(!$storeId && $tenantId, function ($sq) use ($tenantId) {
+                          $sq->whereIn('store_id', function ($sub) use ($tenantId) {
+                              $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+                          });
+                      })
+                      ->when($a->cashier_id, fn ($sq) => $sq->where('created_by', $a->cashier_id));
+                })
                 ->get()
-                ->sum(fn ($p) => $p->amount - (float) ($p->metadata['change'] ?? 0));
+                ->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
 
             $expected = $a->opening_cash + $cashSales;
             $actual = $a->actual_cash ?? $expected;

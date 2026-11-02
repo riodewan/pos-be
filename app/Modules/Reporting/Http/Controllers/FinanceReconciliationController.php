@@ -14,8 +14,18 @@ class FinanceReconciliationController extends Controller
     {
         $startDate = $request->query('start_date', now()->startOfMonth()->toDateString());
         $endDate = $request->query('end_date', now()->toDateString());
+        $storeId = \App\Core\Context\AppContext::storeId();
+        $tenantId = \App\Core\Context\AppContext::tenantId();
 
-        $paymentsQuery = Payment::with('order')->whereHas('order')
+        $paymentsQuery = Payment::with(['order.store', 'order.orderItems.product'])
+            ->whereHas('order', function ($q) use ($storeId, $tenantId) {
+                $q->when($storeId, fn ($sq) => $sq->where('store_id', $storeId))
+                  ->when(!$storeId && $tenantId, function ($sq) use ($tenantId) {
+                      $sq->whereIn('store_id', function ($sub) use ($tenantId) {
+                          $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+                      });
+                  });
+            })
             ->where('status', 'SUCCESS')
             ->whereDate('paid_at', '>=', $startDate)
             ->whereDate('paid_at', '<=', $endDate);
@@ -25,24 +35,30 @@ class FinanceReconciliationController extends Controller
         $grossSales = (float) $payments->sum('amount');
         $totalMdr = (float) $payments->sum('mdr_fee');
         $totalTax = (float) $payments->sum(fn ($p) => (float) ($p->order?->tax_amount ?? 0));
-        $netSettlement = (float) $payments->sum('net_amount');
+        $netSalesBeforeTax = (float) $payments->sum(fn ($p) => max(0, (float) ($p->order?->subtotal ?? 0) - (float) ($p->order?->discount_amount ?? 0)));
+        $netSettlement = (float) $payments->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
 
-        if ($netSettlement == 0 && $grossSales > 0) {
-            $netSettlement = $grossSales - $totalMdr;
-        }
+        $digitalNetSettlement = (float) $payments
+            ->filter(fn ($p) => ($p->method instanceof \BackedEnum ? $p->method->value : (string) $p->method) !== 'CASH')
+            ->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
+
+        $cashNetSettlement = (float) $payments
+            ->filter(fn ($p) => ($p->method instanceof \BackedEnum ? $p->method->value : (string) $p->method) === 'CASH')
+            ->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
 
         // Breakdown by channel/method
-        $methodsBreakdown = $payments->groupBy('method')->map(function ($group, $method) {
+        $methodsBreakdown = $payments->groupBy(fn ($p) => $p->method instanceof \BackedEnum ? $p->method->value : (string) $p->method)->map(function ($group, $method) {
             $gross = (float) $group->sum('amount');
             $mdr = (float) $group->sum('mdr_fee');
             $tax = (float) $group->sum(fn ($p) => (float) ($p->order?->tax_amount ?? 0));
-            $net = (float) $group->sum('net_amount');
-            if ($net == 0) $net = $gross - $mdr;
+            $netSales = (float) $group->sum(fn ($p) => max(0, (float) ($p->order?->subtotal ?? 0) - (float) ($p->order?->discount_amount ?? 0)));
+            $net = (float) $group->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
 
             return [
                 'method' => $method,
                 'count' => $group->count(),
                 'gross_amount' => $gross,
+                'net_sales' => $netSales,
                 'tax_amount' => $tax,
                 'mdr_fee' => $mdr,
                 'net_amount' => $net,
@@ -50,17 +66,24 @@ class FinanceReconciliationController extends Controller
         })->values();
 
         // Recent reconciliation records
-        $reconciliations = $payments->sortByDesc('paid_at')->take(20)->map(function ($payment) {
+        $reconciliations = $payments->sortByDesc('paid_at')->take(30)->map(function ($payment) {
+            $methodStr = $payment->method instanceof \BackedEnum ? $payment->method->value : (string) $payment->method;
+            $netSales = max(0, (float) ($payment->order?->subtotal ?? 0) - (float) ($payment->order?->discount_amount ?? 0));
+            $taxAmount = (float) ($payment->order?->tax_amount ?? 0);
+            $netAmount = (float) ($payment->net_amount > 0 ? $payment->net_amount : max(0, (float) $payment->amount - (float) $payment->mdr_fee));
+
             return [
                 'id' => $payment->id,
                 'payment_number' => $payment->payment_number,
                 'order_number' => $payment->order?->order_number ?? '-',
-                'method' => $payment->method,
+                'customer_name' => $payment->order?->customer_name ?: 'Pelanggan Umum',
+                'method' => $methodStr,
                 'gross_amount' => (float) $payment->amount,
-                'tax_amount' => (float) ($payment->order?->tax_amount ?? 0),
+                'net_sales' => $netSales,
+                'tax_amount' => $taxAmount,
                 'mdr_fee' => (float) $payment->mdr_fee,
-                'net_amount' => (float) ($payment->net_amount > 0 ? $payment->net_amount : ($payment->amount - $payment->mdr_fee)),
-                'settlement_status' => $payment->settlement_status ?? 'SELESAI',
+                'net_amount' => $netAmount,
+                'settlement_status' => $methodStr === 'CASH' ? 'SELESAI' : ($payment->settlement_status ?? 'SIAP_CAIR'),
                 'paid_at' => $payment->paid_at?->toIso8601String(),
             ];
         })->values();
@@ -74,9 +97,12 @@ class FinanceReconciliationController extends Controller
                 ],
                 'totals' => [
                     'gross_sales' => $grossSales,
+                    'net_sales' => $netSalesBeforeTax,
                     'total_tax' => $totalTax,
                     'total_mdr' => $totalMdr,
                     'net_settlement' => $netSettlement,
+                    'digital_net_settlement' => $digitalNetSettlement,
+                    'cash_net_settlement' => $cashNetSettlement,
                     'transaction_count' => $payments->count(),
                 ],
                 'methods_breakdown' => $methodsBreakdown,

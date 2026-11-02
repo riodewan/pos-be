@@ -15,21 +15,56 @@ class DisbursementController extends Controller
 
     private function availableBalance(): float
     {
-        $payments = Payment::whereHas('order')->where('status', 'SUCCESS')->where('method', '!=', 'CASH')->get();
-        $net = $payments->sum(fn ($p) => $p->net_amount > 0 ? $p->net_amount : ($p->amount - $p->mdr_fee));
-        $withdrawn = Disbursement::where('status', '!=', 'Gagal')->sum('gross_amount');
+        $storeId = AppContext::storeId();
+        $tenantId = AppContext::tenantId();
 
-        return max(0, (float) $net - (float) $withdrawn);
+        $payments = Payment::whereHas('order', function ($q) use ($storeId, $tenantId) {
+                $q->when($storeId, fn ($sq) => $sq->where('store_id', $storeId))
+                  ->when(!$storeId && $tenantId, function ($sq) use ($tenantId) {
+                      $sq->whereIn('store_id', function ($sub) use ($tenantId) {
+                          $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+                      });
+                  });
+            })
+            ->where('status', 'SUCCESS')
+            ->where('method', '!=', 'CASH')
+            ->get();
+
+        $net = $payments->sum(fn ($p) => $p->net_amount > 0 ? (float) $p->net_amount : max(0, (float) $p->amount - (float) $p->mdr_fee));
+
+        $withdrawnQuery = Disbursement::where('status', '!=', 'Gagal');
+        if ($storeId) {
+            $withdrawnQuery->where('store_id', $storeId);
+        } elseif ($tenantId) {
+            $withdrawnQuery->whereIn('store_id', function ($sub) use ($tenantId) {
+                $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+            });
+        }
+        $withdrawn = (float) $withdrawnQuery->sum('gross_amount');
+
+        return max(0.0, (float) $net - $withdrawn);
     }
 
     public function index(): JsonResponse
     {
+        $storeId = AppContext::storeId();
+        $tenantId = AppContext::tenantId();
+
+        $itemsQuery = Disbursement::orderByDesc('requested_at');
+        if ($storeId) {
+            $itemsQuery->where('store_id', $storeId);
+        } elseif ($tenantId) {
+            $itemsQuery->whereIn('store_id', function ($sub) use ($tenantId) {
+                $sub->select('id')->from('stores')->where('tenant_id', $tenantId);
+            });
+        }
+
         return response()->json([
             'message' => 'Disbursements retrieved successfully.',
             'data' => [
                 'available_balance' => $this->availableBalance(),
                 'transfer_fee' => self::TRANSFER_FEE,
-                'items' => Disbursement::orderByDesc('requested_at')->get(),
+                'items' => $itemsQuery->get(),
             ],
         ]);
     }
@@ -56,7 +91,7 @@ class DisbursementController extends Controller
             'gross_amount' => $validated['amount'],
             'fee' => self::TRANSFER_FEE,
             'net_received' => $validated['amount'] - self::TRANSFER_FEE,
-            'status' => 'Diproses',
+            'status' => 'Berhasil',
             'requested_by' => $request->user()?->id,
             'requested_at' => now(),
         ]);

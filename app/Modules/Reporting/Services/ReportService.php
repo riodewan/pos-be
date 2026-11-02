@@ -29,6 +29,24 @@ class ReportService
     }
 
     /**
+     * Scope query to orders that are completed OR have a successful payment (and are not cancelled).
+     */
+    protected function scopePaidOrCompletedOrders($query, string $orderTable = 'orders')
+    {
+        return $query
+            ->where("{$orderTable}.status", '!=', OrderStatus::CANCELLED->value)
+            ->where(function ($q) use ($orderTable) {
+                $q->where("{$orderTable}.status", OrderStatus::COMPLETED->value)
+                  ->orWhereExists(function ($sub) use ($orderTable) {
+                      $sub->select(DB::raw(1))
+                          ->from('payments')
+                          ->whereColumn('payments.order_id', "{$orderTable}.id")
+                          ->where('payments.status', PaymentStatus::SUCCESS->value);
+                  });
+            });
+    }
+
+    /**
      * Parse date range filters (default to current month if null).
      */
     protected function parseDateRange(?string $startDate = null, ?string $endDate = null): array
@@ -53,9 +71,9 @@ class ReportService
 
         $query = DB::table('orders');
         $this->scopeStoreOrTenant($query, 'store_id');
+        $this->scopePaidOrCompletedOrders($query, 'orders');
 
         $summary = $query
-            ->where('status', OrderStatus::COMPLETED->value)
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw('
                 COUNT(id) as total_orders,
@@ -107,9 +125,9 @@ class ReportService
 
         $query = DB::table('orders');
         $this->scopeStoreOrTenant($query, 'store_id');
+        $this->scopePaidOrCompletedOrders($query, 'orders');
 
         $trend = $query
-            ->where('status', OrderStatus::COMPLETED->value)
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw("
                 TO_CHAR(created_at, 'YYYY-MM-DD') as date,
@@ -134,38 +152,58 @@ class ReportService
     }
 
     /**
-     * Get Top Selling Products.
+     * Get Top Selling Products with real HPP (COGS) and Gross Margin %.
      */
     public function getTopProducts(?string $startDate = null, ?string $endDate = null, int $limit = 10): array
     {
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
         $query = DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id');
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->leftJoin('products as p', 'p.id', '=', 'oi.product_id');
         $this->scopeStoreOrTenant($query, 'o.store_id');
+        $this->scopePaidOrCompletedOrders($query, 'o');
 
         $products = $query
-            ->where('o.status', OrderStatus::COMPLETED->value)
             ->whereBetween('o.created_at', [$start, $end])
             ->selectRaw('
                 oi.product_id,
                 oi.product_name,
+                COALESCE(p.category, \'Menu Utama\') as category,
                 SUM(oi.quantity) as quantity_sold,
                 SUM(oi.subtotal) as total_sales,
-                ROUND(AVG(oi.unit_price), 2) as average_price
+                ROUND(AVG(oi.unit_price), 2) as average_price,
+                COALESCE(p.cost_price, 0) as unit_cost,
+                SUM(oi.quantity * COALESCE(p.cost_price, 0)) as total_cogs
             ')
-            ->groupBy('oi.product_id', 'oi.product_name')
+            ->groupBy('oi.product_id', 'oi.product_name', 'p.category', 'p.cost_price')
             ->orderByDesc('quantity_sold')
             ->limit($limit)
             ->get();
 
-        return $products->map(fn ($row) => [
-            'product_id' => $row->product_id,
-            'product_name' => $row->product_name,
-            'quantity_sold' => (float) $row->quantity_sold,
-            'total_sales' => (float) $row->total_sales,
-            'average_price' => (float) $row->average_price,
-        ])->all();
+        return $products->map(function ($row) {
+            $sales = (float) $row->total_sales;
+            $cogs = (float) $row->total_cogs;
+            $profit = max(0.0, $sales - $cogs);
+            $marginPct = $sales > 0 ? round(($profit / $sales) * 100, 1) : 0.0;
+
+            return [
+                'id' => $row->product_id,
+                'product_id' => $row->product_id,
+                'name' => $row->product_name,
+                'product_name' => $row->product_name,
+                'category' => $row->category ?: 'Menu Utama',
+                'quantity_sold' => (float) $row->quantity_sold,
+                'total_quantity_sold' => (float) $row->quantity_sold,
+                'total_sales' => $sales,
+                'revenue' => $sales,
+                'average_price' => (float) $row->average_price,
+                'unit_cost' => (float) $row->unit_cost,
+                'total_cogs' => round($cogs, 2),
+                'gross_profit' => round($profit, 2),
+                'margin_percent' => $marginPct,
+            ];
+        })->all();
     }
 
     /**
@@ -203,38 +241,110 @@ class ReportService
 
     /**
      * Get Raw Material Consumption & HPP (COGS) Report.
+     * Combines theoretical recipe usage from orders and actual usage from inventory_movements.
      */
     public function getInventoryConsumptionReport(?string $startDate = null, ?string $endDate = null): array
     {
         $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $consumption = DB::table('inventory_movements as im')
-            ->join('ingredients as ing', 'ing.id', '=', 'im.ingredient_id')
-            ->join('units as u', 'u.id', '=', 'im.unit_id')
-            ->leftJoin('inventory_stocks as s', function ($join) use ($storeId) {
-                $join->on('s.ingredient_id', '=', 'im.ingredient_id')
-                    ->where('s.store_id', '=', $storeId);
+        // 1. Theoretical usage from paid/completed orders * active recipe items
+        $theoQuery = DB::table('order_items as oi')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->join('recipes as r', function ($join) {
+                $join->on('r.product_id', '=', 'oi.product_id')
+                     ->on('r.store_id', '=', 'o.store_id')
+                     ->where('r.status', '=', 'ACTIVE')
+                     ->whereNull('r.deleted_at');
             })
-            ->where('im.store_id', $storeId)
-            ->where('im.type', MovementType::SALE->value)
-            ->whereBetween('im.created_at', [$start, $end])
+            ->join('recipe_items as ri', 'ri.recipe_id', '=', 'r.id');
+        $this->scopeStoreOrTenant($theoQuery, 'o.store_id');
+        $this->scopePaidOrCompletedOrders($theoQuery, 'o');
+
+        $theoreticalMap = $theoQuery
+            ->whereBetween('o.created_at', [$start, $end])
+            ->selectRaw('ri.ingredient_id, SUM(oi.quantity * ri.quantity) as theo_qty')
+            ->groupBy('ri.ingredient_id')
+            ->pluck('theo_qty', 'ingredient_id');
+
+        // 2. Actual usage from inventory_movements (SALE + WASTE + negative ADJUSTMENT)
+        $actualQuery = DB::table('inventory_movements as im')
+            ->whereIn('im.type', [MovementType::SALE->value, MovementType::WASTE->value, MovementType::ADJUSTMENT->value])
+            ->where('im.quantity', '<', 0)
+            ->whereBetween('im.created_at', [$start, $end]);
+        $this->scopeStoreOrTenant($actualQuery, 'im.store_id');
+
+        $actualMap = $actualQuery
+            ->selectRaw('im.ingredient_id, ABS(SUM(im.quantity)) as actual_qty')
+            ->groupBy('im.ingredient_id')
+            ->pluck('actual_qty', 'ingredient_id');
+
+        // 3. Load ingredients in store/tenant that have either theoretical/actual usage or active recipes/stock
+        $ingQuery = DB::table('ingredients as ing')
+            ->join('units as u', 'u.id', '=', 'ing.unit_id')
+            ->leftJoin('inventory_stocks as s', function ($join) {
+                $join->on('s.ingredient_id', '=', 'ing.id')
+                     ->on('s.store_id', '=', 'ing.store_id');
+            })
+            ->whereNull('ing.deleted_at');
+        $this->scopeStoreOrTenant($ingQuery, 'ing.store_id');
+
+        $ingredients = $ingQuery
             ->selectRaw('
-                im.ingredient_id,
+                ing.id as ingredient_id,
                 ing.name as ingredient_name,
                 u.code as unit_code,
                 u.name as unit_name,
-                ABS(SUM(im.quantity)) as total_consumed_quantity,
-                COALESCE(NULLIF(s.average_cost, 0), ing.cost_price, 0) as unit_cost,
-                ROUND(ABS(SUM(im.quantity)) * COALESCE(NULLIF(s.average_cost, 0), ing.cost_price, 0), 2) as estimated_cogs
+                COALESCE(s.quantity, 0) as remaining_stock,
+                COALESCE(NULLIF(s.average_cost, 0), ing.cost_price, 0) as unit_cost
             ')
-            ->groupBy('im.ingredient_id', 'ing.name', 'u.code', 'u.name', 's.average_cost', 'ing.cost_price')
-            ->orderByDesc('total_consumed_quantity')
             ->get();
 
-        $totalCogs = $consumption->sum('estimated_cogs');
+        $items = [];
+        $totalCogs = 0.0;
 
-        // Net sales in same period to calculate gross profit margin
+        foreach ($ingredients as $ing) {
+            $theo = round((float) ($theoreticalMap[$ing->ingredient_id] ?? 0), 2);
+            $actual = round((float) ($actualMap[$ing->ingredient_id] ?? 0), 2);
+
+            if ($theo <= 0 && $actual <= 0) {
+                continue;
+            }
+
+            // If actual movement wasn't recorded for older orders, fallback to theoretical
+            $effectiveActual = $actual > 0 ? $actual : $theo;
+            $variance = round($effectiveActual - $theo, 2);
+            $unitCost = (float) $ing->unit_cost;
+            $cost = round($effectiveActual * $unitCost, 2);
+            $totalCogs += $cost;
+
+            $status = 'Efisien';
+            if ($variance > 0) {
+                $status = ($theo > 0 && ($variance / $theo) > 0.1) ? 'Boros' : 'Wajar';
+            }
+
+            $items[] = [
+                'id' => $ing->ingredient_id,
+                'ingredient_id' => $ing->ingredient_id,
+                'ingredient_name' => $ing->ingredient_name,
+                'name' => $ing->ingredient_name,
+                'unit' => $ing->unit_code,
+                'unit_code' => $ing->unit_code,
+                'unit_name' => $ing->unit_name,
+                'theoretical_usage' => $theo,
+                'actual_usage' => $effectiveActual,
+                'total_consumed_quantity' => $effectiveActual,
+                'variance' => $variance,
+                'remaining_stock' => (float) $ing->remaining_stock,
+                'unit_cost' => $unitCost,
+                'cost' => $cost,
+                'estimated_cogs' => $cost,
+                'status' => $status,
+            ];
+        }
+
+        usort($items, fn ($a, $b) => $b['estimated_cogs'] <=> $a['estimated_cogs']);
+
         $salesSummary = $this->getSalesSummary($start->toDateString(), $end->toDateString());
         $netSales = $salesSummary['kpis']['net_sales'];
         $grossProfit = max(0, $netSales - $totalCogs);
@@ -247,19 +357,11 @@ class ReportService
             ],
             'financial_analysis' => [
                 'net_sales' => $netSales,
-                'total_cogs' => (float) $totalCogs,
-                'gross_profit' => (float) $grossProfit,
+                'total_cogs' => round($totalCogs, 2),
+                'gross_profit' => round($grossProfit, 2),
                 'gross_profit_margin_percentage' => $grossMargin,
             ],
-            'items' => $consumption->map(fn ($row) => [
-                'ingredient_id' => $row->ingredient_id,
-                'ingredient_name' => $row->ingredient_name,
-                'unit_code' => $row->unit_code,
-                'unit_name' => $row->unit_name,
-                'total_consumed_quantity' => (float) $row->total_consumed_quantity,
-                'unit_cost' => (float) $row->unit_cost,
-                'estimated_cogs' => (float) $row->estimated_cogs,
-            ])->all(),
+            'items' => $items,
         ];
     }
 
@@ -268,26 +370,27 @@ class ReportService
      */
     public function getCashierShiftReport(?string $startDate = null, ?string $endDate = null): array
     {
-        $storeId = AppContext::storeId();
         [$start, $end] = $this->parseDateRange($startDate, $endDate);
 
-        $cashiers = DB::table('orders as o')
+        $query = DB::table('orders as o')
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
             ->leftJoin('payments as p', function ($join) {
                 $join->on('p.order_id', '=', 'o.id')
                     ->where('p.status', '=', PaymentStatus::SUCCESS->value);
-            })
-            ->where('o.store_id', $storeId)
-            ->where('o.status', OrderStatus::COMPLETED->value)
+            });
+        $this->scopeStoreOrTenant($query, 'o.store_id');
+        $this->scopePaidOrCompletedOrders($query, 'o');
+
+        $cashiers = $query
             ->whereBetween('o.created_at', [$start, $end])
             ->selectRaw("
                 o.created_by as user_id,
                 COALESCE(u.name, 'Customer (QR Self-Order)') as user_name,
                 COUNT(DISTINCT o.id) as total_orders,
-                COALESCE(SUM(o.total_amount), 0) as total_collected,
-                COALESCE(SUM(CASE WHEN p.method = 'CASH' THEN p.amount - COALESCE((p.metadata->>'change')::numeric, 0) ELSE 0 END), 0) as cash_total,
-                COALESCE(SUM(CASE WHEN p.method = 'QRIS' THEN p.amount ELSE 0 END), 0) as qris_total,
-                COALESCE(SUM(CASE WHEN p.method NOT IN ('CASH', 'QRIS') AND p.method IS NOT NULL THEN p.amount ELSE 0 END), 0) as other_total
+                COALESCE(SUM(o.total_amount - COALESCE(o.service_charge, 0)), 0) as total_collected,
+                COALESCE(SUM(CASE WHEN p.method = 'CASH' THEN (CASE WHEN p.net_amount > 0 THEN p.net_amount ELSE p.amount - COALESCE(p.mdr_fee, 0) END) ELSE 0 END), 0) as cash_total,
+                COALESCE(SUM(CASE WHEN p.method = 'QRIS' THEN (CASE WHEN p.net_amount > 0 THEN p.net_amount ELSE p.amount - COALESCE(p.mdr_fee, 0) END) ELSE 0 END), 0) as qris_total,
+                COALESCE(SUM(CASE WHEN p.method NOT IN ('CASH', 'QRIS') AND p.method IS NOT NULL THEN (CASE WHEN p.net_amount > 0 THEN p.net_amount ELSE p.amount - COALESCE(p.mdr_fee, 0) END) ELSE 0 END), 0) as other_total
             ")
             ->groupBy('o.created_by', 'u.name')
             ->orderByDesc('total_collected')
@@ -319,8 +422,8 @@ class ReportService
 
         $query = DB::table('orders');
         $this->scopeStoreOrTenant($query, 'store_id');
+        $this->scopePaidOrCompletedOrders($query, 'orders');
         $channels = $query
-            ->where('status', OrderStatus::COMPLETED->value)
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw("
                 COALESCE(channel, source) as channel_name,
@@ -450,15 +553,13 @@ class ReportService
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id');
         $this->scopeStoreOrTenant($cogsQuery, 'o.store_id');
+        $this->scopePaidOrCompletedOrders($cogsQuery, 'o');
         $actualCogs = (float) $cogsQuery
-            ->where('o.status', OrderStatus::COMPLETED->value)
             ->whereBetween('o.created_at', [$start, $end])
             ->selectRaw('COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, 0)), 0) as total_cogs')
             ->value('total_cogs');
 
-        $profitEstimate = $actualCogs > 0
-            ? max(0, $sales['kpis']['net_sales'] - $actualCogs)
-            : max(0, $sales['kpis']['net_sales'] * 0.45);
+        $profitEstimate = max(0, $sales['kpis']['net_sales'] - $actualCogs);
 
         // Today orders breakdown by status
         $todayQuery = DB::table('orders');
