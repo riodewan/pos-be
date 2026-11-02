@@ -246,6 +246,8 @@ class InternalPlatformController extends Controller
                     // Ensure the tenant has at least one active store
                     if ($tenant->stores()->count() === 0) {
                         $tenant->stores()->create([
+                            'id' => (string) \Illuminate\Support\Str::ulid(),
+                            'code' => 'PUSAT',
                             'name' => $tenant->name . ' - Outlet Pusat',
                             'phone' => $tenant->phone ?: '08123456789',
                             'address' => $tenant->address ?: 'Indonesia',

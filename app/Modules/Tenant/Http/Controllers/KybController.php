@@ -7,15 +7,21 @@ use App\Core\Traits\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\UserRole;
+use App\Modules\Rbac\Services\RbacService;
 use App\Modules\Tenant\Models\PlatformApproval;
 use App\Modules\Tenant\Models\Tenant;
+use App\Modules\Tenant\Models\TenantUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class KybController extends Controller
 {
     use ApiResponse;
+
+    private const DOC_KEYS = ['nib', 'npwp', 'siu'];
 
     /**
      * Submit KYB verification data.
@@ -23,103 +29,152 @@ class KybController extends Controller
     public function submit(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'business_name' => ['required', 'string', 'max:150'],
+            'business_name' => ['required', 'string', 'max:100'],
             'business_type' => ['nullable', 'string', 'max:50'],
             'business_category' => ['nullable', 'string', 'max:100'],
             'outlet_count' => ['nullable', 'string', 'max:50'],
             'business_address' => ['nullable', 'string', 'max:500'],
-            'nib_file' => ['nullable'],
-            'npwp_file' => ['nullable'],
-            'siu_file' => ['nullable'],
             'owner_name' => ['nullable', 'string', 'max:150'],
             'owner_nik' => ['nullable', 'string', 'max:50'],
             'owner_role' => ['nullable', 'string', 'max:50'],
             'owner_email' => ['nullable', 'string', 'email', 'max:150'],
-            'owner_phone' => ['nullable', 'string', 'max:50'],
+            'owner_phone' => ['nullable', 'string', 'max:20'],
             'owner_address' => ['nullable', 'string', 'max:500'],
+            // Documents: { name, size, data (base64 data URL) }
+            'nib_file' => ['nullable', 'array'],
+            'npwp_file' => ['nullable', 'array'],
+            'siu_file' => ['nullable', 'array'],
+            'nib_file.name' => ['nullable', 'string', 'max:255'],
+            'npwp_file.name' => ['nullable', 'string', 'max:255'],
+            'siu_file.name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $user = $request->user();
 
-        // 1. Find or create Tenant for this user
-        $tenant = $user->tenants()->first();
+        $result = DB::transaction(function () use ($request, $validated, $user) {
+            // 1. Find or create Tenant for this user
+            $tenant = $user->tenants()->first();
 
-        if (!$tenant) {
-            $baseSlug = Str::slug($validated['business_name']) ?: 'toko';
-            $uniqueSlug = $baseSlug . '-' . strtolower(Str::random(5));
+            if (!$tenant) {
+                $baseSlug = Str::slug($validated['business_name']) ?: 'toko';
 
-            $tenant = Tenant::create([
-                'name' => $validated['business_name'],
-                'slug' => $uniqueSlug,
-                'email' => $validated['owner_email'] ?? $user->email,
-                'phone' => $validated['owner_phone'] ?? '081234567890',
-                'address' => $validated['business_address'] ?? 'Indonesia',
-                'status' => TenantStatus::PENDING,
-            ]);
+                $tenant = Tenant::create([
+                    'name' => $validated['business_name'],
+                    'slug' => $baseSlug . '-' . strtolower(Str::random(5)),
+                    'email' => $user->email,
+                    'phone' => $validated['owner_phone'] ?? null,
+                    'address' => $validated['business_address'] ?? null,
+                    'status' => TenantStatus::PENDING,
+                ]);
 
-            // Link user to tenant
-            $tenant->users()->attach($user->id, ['joined_at' => now()]);
-
-            // Create default tenant roles (Owner, Manager, Kasir, etc.) and assign Owner to user
-            $rbacService = app(\App\Modules\Rbac\Services\RbacService::class);
-            $defaultRoles = $rbacService->createDefaultTenantRoles($tenant);
-            $ownerRole = $defaultRoles['Owner'] ?? Role::where('tenant_id', $tenant->id)->where('name', 'Owner')->first();
-
-            if ($ownerRole) {
-                UserRole::firstOrCreate([
-                    'user_id' => $user->id,
-                    'role_id' => $ownerRole->id,
+                TenantUser::create([
                     'tenant_id' => $tenant->id,
+                    'user_id' => $user->id,
+                    'joined_at' => now(),
+                ]);
+
+                // Default tenant roles (Owner, Manager, Kasir, ...) and assign Owner to registrant
+                $defaultRoles = app(RbacService::class)->createDefaultTenantRoles($tenant);
+                $ownerRole = $defaultRoles['Owner']
+                    ?? Role::where('tenant_id', $tenant->id)->where('name', 'Owner')->first();
+
+                if ($ownerRole) {
+                    UserRole::firstOrCreate([
+                        'user_id' => $user->id,
+                        'role_id' => $ownerRole->id,
+                        'tenant_id' => $tenant->id,
+                    ]);
+                }
+            } else {
+                $tenant->update([
+                    'name' => $validated['business_name'],
+                    'phone' => $validated['owner_phone'] ?? $tenant->phone,
+                    'address' => $validated['business_address'] ?? $tenant->address,
+                    'status' => TenantStatus::PENDING,
                 ]);
             }
-        } else {
-            // Update tenant details and keep pending review
-            $tenant->update([
-                'name' => $validated['business_name'],
-                'phone' => $validated['owner_phone'] ?? $tenant->phone,
-                'address' => $validated['business_address'] ?? $tenant->address,
-                'status' => TenantStatus::PENDING,
-            ]);
-        }
 
-        // 2. Create or update PlatformApproval
-        $approval = PlatformApproval::where('tenant_id', $tenant->id)
-            ->where('type', 'KYB_VERIFICATION')
-            ->latest()
-            ->first();
+            // 2. Store uploaded documents (base64) on public disk
+            $previous = PlatformApproval::where('tenant_id', $tenant->id)
+                ->where('type', 'KYB_VERIFICATION')
+                ->latest()
+                ->first();
+            $previousPayload = $previous?->payload ?? [];
 
-        $payload = array_merge($validated, [
-            'submitted_at' => now()->toIso8601String(),
-            'user_email' => $user->email,
-            'user_name' => $user->name,
-        ]);
+            $payload = collect($validated)->except(['nib_file', 'npwp_file', 'siu_file'])->all();
 
-        if ($approval) {
-            $approval->update([
-                'title' => 'Verifikasi KYB - ' . $tenant->name,
-                'description' => 'Pengajuan ulang verifikasi dokumen & legalitas bisnis.',
-                'status' => 'PENDING',
-                'payload' => $payload,
-                'reviewed_by' => null,
-                'reviewed_at' => null,
-                'review_notes' => null,
-            ]);
-        } else {
-            $approval = PlatformApproval::create([
-                'type' => 'KYB_VERIFICATION',
-                'tenant_id' => $tenant->id,
-                'user_id' => $user->id,
-                'title' => 'Verifikasi KYB - ' . $tenant->name,
-                'description' => 'Pengajuan verifikasi informasi bisnis dan dokumen KYB dari merchant.',
-                'status' => 'PENDING',
-                'payload' => $payload,
-            ]);
-        }
+            foreach (self::DOC_KEYS as $key) {
+                $field = $key . '_file';
+                $file = $request->input($field);
 
-        return $this->success([
-            'tenant' => $tenant,
-            'approval' => $approval,
-        ], 'Data verifikasi bisnis berhasil dikirim dan sedang menunggu persetujuan Super Admin.');
+                if (is_array($file) && !empty($file['data']) && str_contains($file['data'], ',')) {
+                    [, $b64] = explode(',', $file['data'], 2);
+                    $binary = base64_decode($b64, true);
+                    if ($binary !== false) {
+                        $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION)) ?: 'pdf';
+                        $ext = in_array($ext, ['pdf', 'png', 'jpg', 'jpeg'], true) ? $ext : 'pdf';
+                        $path = "kyb/{$tenant->id}/{$key}-" . Str::random(8) . ".{$ext}";
+                        Storage::disk('public')->put($path, $binary);
+                        $payload[$field] = [
+                            'name' => $file['name'] ?? basename($path),
+                            'size' => $file['size'] ?? null,
+                            'path' => $path,
+                            'url' => Storage::disk('public')->url($path),
+                        ];
+                        continue;
+                    }
+                }
+
+                // Keep previously uploaded document if user did not replace it
+                if (!empty($previousPayload[$field])) {
+                    $payload[$field] = $previousPayload[$field];
+                }
+            }
+
+            $payload['submitted_at'] = now()->toIso8601String();
+            $payload['user_email'] = $user->email;
+            $payload['user_name'] = $user->name;
+
+            // 3. Create or reset PlatformApproval
+            if ($previous) {
+                $previous->update([
+                    'title' => 'Verifikasi KYB - ' . $tenant->name,
+                    'description' => 'Pengajuan ulang verifikasi dokumen & legalitas bisnis.',
+                    'status' => 'PENDING',
+                    'payload' => $payload,
+                    'reviewed_by' => null,
+                    'reviewed_at' => null,
+                    'review_notes' => null,
+                ]);
+                $approval = $previous;
+            } else {
+                $approval = PlatformApproval::create([
+                    'type' => 'KYB_VERIFICATION',
+                    'tenant_id' => $tenant->id,
+                    'user_id' => $user->id,
+                    'title' => 'Verifikasi KYB - ' . $tenant->name,
+                    'description' => 'Pengajuan verifikasi informasi bisnis dan dokumen KYB dari merchant.',
+                    'status' => 'PENDING',
+                    'payload' => $payload,
+                ]);
+            }
+
+            return compact('tenant', 'approval');
+        });
+
+        return $this->success($result, 'Data verifikasi bisnis berhasil dikirim dan sedang menunggu persetujuan Super Admin.');
+    }
+
+    /**
+     * Active business categories from master data (for KYB form).
+     */
+    public function categories(): JsonResponse
+    {
+        $categories = \App\Modules\Tenant\Models\PlatformMasterCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['id', 'name', 'slug']);
+
+        return $this->success($categories);
     }
 
     /**
@@ -166,4 +221,3 @@ class KybController extends Controller
         ]);
     }
 }
-

@@ -18,3 +18,4 @@ return new class extends Migration
         DB::statement("ALTER TABLE stores ADD CONSTRAINT chk_stores_status CHECK (status IN ('ACTIVE', 'INACTIVE'))");
     }
 };
+

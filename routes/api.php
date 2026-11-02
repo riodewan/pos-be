@@ -23,6 +23,7 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->prefix('tenant/kyb')->group(function () {
     Route::post('/submit', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'submit']);
     Route::get('/status', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'status']);
+    Route::get('/categories', [\App\Modules\Tenant\Http\Controllers\KybController::class, 'categories']);
 });
 
 /*
