@@ -181,6 +181,29 @@ class PaymentService
                 $lockedOrder->update(['status' => OrderStatus::PREPARING]);
             }
 
+            // Auto-sync customer profile & loyalty stats on payment completion
+            if ($tenantId) {
+                $customerSyncService = app(\App\Modules\Customer\Services\CustomerSyncService::class);
+                $customer = null;
+                if ($lockedOrder->customer_id) {
+                    $customer = \App\Modules\Customer\Models\Customer::withoutGlobalScope('tenant')
+                        ->find($lockedOrder->customer_id);
+                }
+                if (!$customer && ($lockedOrder->customer_name || $lockedOrder->customer_phone)) {
+                    $customer = $customerSyncService->resolveOrCreateFromOrderData(
+                        $tenantId,
+                        $lockedOrder->customer_name,
+                        $lockedOrder->customer_phone
+                    );
+                    if ($customer) {
+                        $lockedOrder->update(['customer_id' => $customer->id]);
+                    }
+                }
+                if ($customer) {
+                    $customerSyncService->recalculateCustomerStats($customer);
+                }
+            }
+
             return $payment->load('order');
         });
     }

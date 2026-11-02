@@ -90,6 +90,7 @@ Route::middleware(['auth:sanctum', 'tenant.context'])->prefix('tenant')->group(f
 
     // Customers (CRM & Loyalty)
     Route::get('/customers', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'index']);
+    Route::post('/customers/sync', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'syncFromOrders']);
     Route::post('/customers', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'store']);
     Route::get('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'show']);
     Route::put('/customers/{id}', [\App\Modules\Customer\Http\Controllers\CustomerController::class, 'update']);

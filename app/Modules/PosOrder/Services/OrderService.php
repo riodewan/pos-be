@@ -133,15 +133,32 @@ class OrderService
             $serviceCharge = isset($data['service_charge']) ? (float) $data['service_charge'] : 0;
             $totalAmount = max(0, $subtotal - $orderDiscount + $taxAmount + $serviceCharge);
 
+            // Auto-resolve or create Customer based on phone equality & name similarity
+            $tenantId = AppContext::tenantId();
+            if (!$tenantId && $storeId) {
+                $store = \App\Modules\Tenant\Models\Store::find($storeId);
+                $tenantId = $store?->tenant_id;
+            }
+            $customer = null;
+            if ($tenantId) {
+                $customerSyncService = app(\App\Modules\Customer\Services\CustomerSyncService::class);
+                $customer = $customerSyncService->resolveOrCreateFromOrderData(
+                    $tenantId,
+                    $data['customer_name'] ?? null,
+                    $data['customer_phone'] ?? null
+                );
+            }
+
             $order = Order::create([
                 'id' => (string) Str::ulid(),
                 'store_id' => $storeId,
                 'table_id' => $data['table_id'] ?? null,
+                'customer_id' => $customer?->id,
                 'order_number' => $orderNumber,
                 'source' => $data['source'] ?? OrderSource::POS,
                 'channel' => $data['channel'] ?? 'DINE_IN',
-                'customer_name' => $data['customer_name'] ?? null,
-                'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_name' => $customer?->name ?? ($data['customer_name'] ?? null),
+                'customer_phone' => $customer?->phone ?? ($data['customer_phone'] ?? null),
                 'status' => OrderStatus::PENDING,
                 'subtotal' => $subtotal,
                 'discount_amount' => $orderDiscount,
@@ -158,6 +175,10 @@ class OrderService
                     'order_id' => $order->id,
                     ...$itemData,
                 ]);
+            }
+
+            if ($customer) {
+                app(\App\Modules\Customer\Services\CustomerSyncService::class)->recalculateCustomerStats($customer);
             }
 
             return $order->load(['table', 'orderItems.product']);
@@ -258,14 +279,26 @@ class OrderService
             $taxAmount = $taxPct > 0 ? round(($subtotal * $taxPct) / 100) : 0;
             $totalAmount = $subtotal + $serviceCharge + $taxAmount;
 
+            // Auto-resolve or create Customer from QR Self-Order
+            $customer = null;
+            if ($tenantId) {
+                $customerSyncService = app(\App\Modules\Customer\Services\CustomerSyncService::class);
+                $customer = $customerSyncService->resolveOrCreateFromOrderData(
+                    $tenantId,
+                    $data['customer_name'] ?? null,
+                    $data['customer_phone'] ?? null
+                );
+            }
+
             $order = Order::create([
                 'id' => (string) Str::ulid(),
                 'store_id' => $storeId,
                 'table_id' => $tableId,
+                'customer_id' => $customer?->id,
                 'order_number' => $orderNumber,
                 'source' => OrderSource::QR,
-                'customer_name' => $data['customer_name'] ?? null,
-                'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_name' => $customer?->name ?? ($data['customer_name'] ?? null),
+                'customer_phone' => $customer?->phone ?? ($data['customer_phone'] ?? null),
                 'status' => OrderStatus::PENDING,
                 'subtotal' => $subtotal,
                 'discount_amount' => 0,
@@ -282,6 +315,10 @@ class OrderService
                     'order_id' => $order->id,
                     ...$itemData,
                 ]);
+            }
+
+            if ($customer) {
+                app(\App\Modules\Customer\Services\CustomerSyncService::class)->recalculateCustomerStats($customer);
             }
 
             // Direct Customer Payment (Self-Service QR Flow)
