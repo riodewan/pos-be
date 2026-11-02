@@ -23,6 +23,7 @@ use App\Modules\Tenant\Models\StorePaymentMethod;
 use App\Modules\Tenant\Models\StoreTaxFee;
 use App\Modules\Tenant\Models\Tenant;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DemoOutletSeeder extends Seeder
@@ -43,10 +44,10 @@ class DemoOutletSeeder extends Seeder
         $store->update([
             'category' => 'Coffee Shop & Eatery',
             'description' => 'Spesialis kopi arabika Nusantara dengan artisan pastry segar dan suasana cozy untuk bekerja maupun santai.',
-            'phone' => '0812-3456-7890',
-            'email' => 'menteng@kopimantap.id',
-            'website' => 'https://kopimantap.id',
-            'maps_url' => 'https://maps.google.com/?q=-6.1950,106.8320',
+            'phone' => '021-7654321',
+            'email' => 'senopati@kopinusantara.com',
+            'website' => 'https://kopinusantara.com',
+            'maps_url' => 'https://maps.google.com/?q=-6.2345,106.8123',
             'logo_url' => 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&h=200&fit=crop&crop=faces',
             'thumbnail_url' => 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&auto=format&fit=crop',
             'operational_status' => 'OPEN',
@@ -61,8 +62,8 @@ class DemoOutletSeeder extends Seeder
                 'sunday' => ['open' => '08:00', 'close' => '22:00', 'is_closed' => false],
             ],
             'receipt_config' => [
-                'header_text' => "KOPI MANTAP - MENTENG\nJl. HOS Cokroaminoto No. 42, Menteng, Jakarta Pusat",
-                'footer_text' => "Terima kasih atas kunjungan Anda!\nFollow Instagram kami: @kopimantap.id",
+                'header_text' => "KOPI NUSANTARA - SENOPATI\nJl. Senopati No. 45, Jakarta Selatan",
+                'footer_text' => "Terima kasih atas kunjungan Anda!\nFollow Instagram: @kopinusantara",
                 'show_logo' => true,
                 'show_social' => true,
                 'show_table_number' => true,
@@ -471,6 +472,101 @@ class DemoOutletSeeder extends Seeder
                 'status' => PaymentStatus::SUCCESS,
                 'paid_at' => now()->subHours(3),
             ]);
+        }
+
+        // 9. Disbursements & Cash Shift Audits
+        $cashierUser = User::where('email', 'kasir@kopinusantara.com')->first();
+        DB::table('cash_shift_audits')->insertOrIgnore([
+            [
+                'id' => (string) Str::ulid(),
+                'store_id' => $store->id,
+                'cashier_id' => $cashierUser?->id,
+                'shift_name' => 'Shift Pagi (08:00 - 16:00)',
+                'shift_date' => now()->toDateString(),
+                'opening_cash' => 200000,
+                'actual_cash' => 285800,
+                'notes' => 'Shift pagi selesai tanpa selisih kas fisik.',
+                'created_at' => now()->subHours(1),
+                'updated_at' => now()->subHours(1),
+            ],
+        ]);
+
+        DB::table('disbursements')->insertOrIgnore([
+            [
+                'id' => (string) Str::ulid(),
+                'store_id' => $store->id,
+                'batch_id' => 'WD-' . date('Ymd') . '-001',
+                'bank_name' => 'BCA',
+                'account_number' => '5420192837',
+                'gross_amount' => 1500000,
+                'fee' => 0,
+                'net_received' => 1500000,
+                'status' => 'Berhasil',
+                'requested_by' => $user?->id,
+                'requested_at' => now()->subDays(1),
+                'created_at' => now()->subDays(1),
+                'updated_at' => now()->subDays(1),
+            ],
+        ]);
+
+        // 10. Suppliers & Purchase Orders
+        $supplier1 = \App\Modules\Catalog\Models\Supplier::firstOrCreate(
+            ['store_id' => $store->id, 'code' => 'SUP-GYO-01'],
+            [
+                'name' => 'PT Kopi Gayo Mandiri',
+                'contact_person' => 'Irfan Syahputra',
+                'phone' => '0812-7788-9900',
+                'email' => 'sales@gayomandiri.co.id',
+                'address' => 'Jl. Takengon No. 88, Aceh Tengah',
+                'status' => CommonStatus::ACTIVE,
+            ]
+        );
+
+        $supplier2 = \App\Modules\Catalog\Models\Supplier::firstOrCreate(
+            ['store_id' => $store->id, 'code' => 'SUP-MLK-02'],
+            [
+                'name' => 'CV Susu Segar Sejahtera',
+                'contact_person' => 'Dewi Anggraini',
+                'phone' => '0813-1122-3344',
+                'email' => 'order@sususejahtera.id',
+                'address' => 'Kawasan Industri Sentul, Bogor',
+                'status' => CommonStatus::ACTIVE,
+            ]
+        );
+
+        $purchaseUser = User::where('email', 'inventory@kopinusantara.com')->first() ?? $user;
+        $ingredientEspresso = \App\Modules\Catalog\Models\Ingredient::where('store_id', $store->id)
+            ->where('sku', 'ING-ESP-01')
+            ->first();
+        $unitKg = \App\Modules\Catalog\Models\Unit::where('code', 'KG')->first() 
+            ?? \App\Modules\Catalog\Models\Unit::first();
+
+        if ($supplier1 && $ingredientEspresso && $unitKg) {
+            $purchase = \App\Modules\Inventory\Models\Purchase::firstOrCreate(
+                ['store_id' => $store->id, 'purchase_number' => 'PO-' . date('Ym') . '-0001'],
+                [
+                    'supplier_id' => $supplier1->id,
+                    'purchase_date' => now()->subDays(2)->toDateString(),
+                    'status' => \App\Core\Enums\PurchaseStatus::RECEIVED,
+                    'total_amount' => 1100000,
+                    'notes' => 'Pengadaan biji kopi espresso blend 5 kg restock awal bulan',
+                    'created_by' => $purchaseUser?->id,
+                ]
+            );
+
+            \App\Modules\Inventory\Models\PurchaseItem::firstOrCreate(
+                [
+                    'purchase_id' => $purchase->id,
+                    'ingredient_id' => $ingredientEspresso->id,
+                ],
+                [
+                    'id' => (string) Str::ulid(),
+                    'quantity' => 5.0000,
+                    'unit_id' => $unitKg->id,
+                    'unit_cost' => 220000,
+                    'total_cost' => 1100000,
+                ]
+            );
         }
     }
 }
