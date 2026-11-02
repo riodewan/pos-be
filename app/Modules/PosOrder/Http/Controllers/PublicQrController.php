@@ -69,7 +69,24 @@ class PublicQrController extends Controller
             ->first();
 
         $taxPct = (float) $this->settingService->get('tax_percentage', $qrCode->store_id, $qrCode->store->tenant_id, 0);
-        $servicePct = (float) $this->settingService->get('service_charge_percentage', $qrCode->store_id, $qrCode->store->tenant_id, 0);
+        if ($taxPct <= 0) {
+            $activeTaxes = \App\Modules\Tenant\Models\StoreTaxFee::withoutGlobalScope('store')
+                ->where('store_id', $qrCode->store_id)
+                ->where('type', 'Pajak')
+                ->where('is_active', true)
+                ->get();
+            foreach ($activeTaxes as $t) {
+                if ($t->value_type === 'percent') {
+                    $taxPct += (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', (string) $t->value));
+                }
+            }
+        }
+        $platformFeePct = (float) $this->settingService->get(
+            'platform_fee_percentage',
+            null,
+            $qrCode->store->tenant_id,
+            $this->settingService->get('service_charge_percentage', $qrCode->store_id, $qrCode->store->tenant_id, 0)
+        );
 
         return response()->json([
             'message' => 'QR code resolved successfully.',
@@ -87,8 +104,9 @@ class PublicQrController extends Controller
                     'capacity' => $qrCode->table->capacity,
                 ],
                 'settings' => [
-                    'tax_percentage' => $taxPct,
-                    'service_charge_percentage' => $servicePct,
+                    'tax_percentage' => round($taxPct, 2),
+                    'service_charge_percentage' => round($platformFeePct, 2),
+                    'platform_fee_percentage' => round($platformFeePct, 2),
                 ],
                 'active_order' => $activeOrder,
                 'products' => $products,

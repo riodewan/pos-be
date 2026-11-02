@@ -84,6 +84,19 @@ class PaymentService
 
             $method = is_string($data['method']) ? PaymentMethod::from($data['method']) : $data['method'];
 
+            // Calculate Platform Fee / MDR based on tenant's platform_fee_percentage set by Internal Admin
+            $store = \App\Modules\Tenant\Models\Store::find($storeId);
+            $tenantId = $store?->tenant_id;
+            $settingService = app(\App\Modules\System\Services\SettingService::class);
+            $platformFeePct = (float) $settingService->get('platform_fee_percentage', null, $tenantId, 0);
+
+            $mdrFee = (float) $lockedOrder->service_charge > 0
+                ? (float) $lockedOrder->service_charge
+                : ($platformFeePct > 0 ? round(((float) $lockedOrder->subtotal * $platformFeePct) / 100, 2) : 0.0);
+            $netAmount = max(0, round($orderTotal - $mdrFee, 2));
+            $metadata['platform_fee_percentage'] = $platformFeePct;
+            $metadata['platform_fee_amount'] = $mdrFee;
+
             $payment = Payment::create([
                 'id' => (string) Str::ulid(),
                 'order_id' => $lockedOrder->id,
@@ -91,7 +104,10 @@ class PaymentService
                 'method' => $method,
                 'provider' => $data['provider'] ?? null,
                 'provider_reference' => $data['provider_reference'] ?? null,
-                'amount' => $paidAmount,
+                'amount' => $orderTotal,
+                'mdr_fee' => $mdrFee,
+                'net_amount' => $netAmount,
+                'settlement_status' => $method === PaymentMethod::CASH ? 'SELESAI' : 'SIAP_CAIR',
                 'status' => PaymentStatus::SUCCESS,
                 'paid_at' => now(),
                 'metadata' => $metadata,

@@ -11,11 +11,14 @@ use App\Modules\Catalog\Models\Unit;
 use App\Modules\PosOrder\Models\Order;
 use App\Modules\Rbac\Models\UserRole;
 use App\Modules\System\Models\AuditLog;
+use App\Modules\System\Models\Setting;
+use App\Modules\System\Services\SettingService;
 use App\Modules\Tenant\Models\PlatformApproval;
 use App\Modules\Tenant\Models\PlatformMasterCategory;
 use App\Modules\Tenant\Models\PlatformMasterItem;
 use App\Modules\Tenant\Models\PlatformSubscriptionPlan;
 use App\Modules\Tenant\Models\Store;
+use App\Modules\Tenant\Models\StoreTaxFee;
 use App\Modules\Tenant\Models\Tenant;
 use App\Modules\Tenant\Models\TenantUser;
 use App\Modules\Tenant\Services\TenantService;
@@ -71,6 +74,134 @@ class InternalPlatformController extends Controller
     }
 
     /**
+     * Enrich tenant model with platform_fee_percentage and tax_percentage.
+     */
+    protected function enrichTenantFeeSettings(Tenant $tenant): Tenant
+    {
+        $settingService = app(SettingService::class);
+        $firstStore = Store::where('tenant_id', $tenant->id)->first();
+
+        $rawPlatformFee = $settingService->get('platform_fee_percentage', null, $tenant->id, null);
+        if ($rawPlatformFee === null && $firstStore) {
+            $feeRecord = StoreTaxFee::withoutGlobalScope('store')
+                ->where('store_id', $firstStore->id)
+                ->where('type', 'Biaya')
+                ->where('is_active', true)
+                ->first();
+            if ($feeRecord && $feeRecord->value_type === 'percent') {
+                $rawPlatformFee = (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', (string) $feeRecord->value));
+            }
+        }
+        $platformFeePct = $rawPlatformFee !== null ? (float) $rawPlatformFee : 0.0;
+
+        $rawTax = $settingService->get('tax_percentage', $firstStore?->id, $tenant->id, null);
+        if ($rawTax === null && $firstStore) {
+            $taxRecord = StoreTaxFee::withoutGlobalScope('store')
+                ->where('store_id', $firstStore->id)
+                ->where('type', 'Pajak')
+                ->where('is_active', true)
+                ->first();
+            if ($taxRecord) {
+                $rawTax = (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', (string) $taxRecord->value));
+            }
+        }
+        $taxPct = $rawTax !== null ? (float) $rawTax : 10.0;
+
+        $tenant->setAttribute('platform_fee_percentage', $platformFeePct);
+        $tenant->setAttribute('tax_percentage', $taxPct);
+
+        return $tenant;
+    }
+
+    /**
+     * Sync tenant platform_fee_percentage and tax_percentage to settings & StoreTaxFee.
+     */
+    protected function syncTenantFeeSettings(Tenant $tenant, ?float $platformFeePct = null, ?float $taxPct = null): void
+    {
+        $settingService = app(SettingService::class);
+        $stores = Store::where('tenant_id', $tenant->id)->get();
+
+        if ($platformFeePct !== null) {
+            $cleanFee = max(0, min(100, round($platformFeePct, 2)));
+            $settingService->set('platform_fee_percentage', (string) $cleanFee, $tenant->id, null);
+
+            foreach ($stores as $store) {
+                $settingService->set('service_charge_percentage', (string) $cleanFee, $tenant->id, $store->id);
+
+                // Keep a single platform fee record in StoreTaxFee
+                $existingFees = StoreTaxFee::withoutGlobalScope('store')
+                    ->where('store_id', $store->id)
+                    ->where('type', 'Biaya')
+                    ->get();
+
+                $primaryFee = $existingFees->first();
+                if ($primaryFee) {
+                    $primaryFee->update([
+                        'name' => 'Biaya Layanan Platform',
+                        'type' => 'Biaya',
+                        'value_type' => 'percent',
+                        'value' => $cleanFee . '%',
+                        'applies_to' => 'Semua Transaksi',
+                        'is_active' => $cleanFee > 0,
+                    ]);
+                    foreach ($existingFees->slice(1) as $dup) {
+                        $dup->delete();
+                    }
+                } elseif ($cleanFee > 0) {
+                    StoreTaxFee::withoutGlobalScope('store')->create([
+                        'store_id' => $store->id,
+                        'name' => 'Biaya Layanan Platform',
+                        'type' => 'Biaya',
+                        'value_type' => 'percent',
+                        'value' => $cleanFee . '%',
+                        'applies_to' => 'Semua Transaksi',
+                        'is_active' => true,
+                    ]);
+                }
+            }
+        }
+
+        if ($taxPct !== null) {
+            $cleanTax = max(0, min(100, round($taxPct, 2)));
+            $settingService->set('tax_percentage', (string) $cleanTax, $tenant->id, null);
+
+            foreach ($stores as $store) {
+                $settingService->set('tax_percentage', (string) $cleanTax, $tenant->id, $store->id);
+
+                $existingTaxes = StoreTaxFee::withoutGlobalScope('store')
+                    ->where('store_id', $store->id)
+                    ->where('type', 'Pajak')
+                    ->get();
+
+                $primaryTax = $existingTaxes->first();
+                if ($primaryTax) {
+                    $primaryTax->update([
+                        'name' => $primaryTax->name ?: 'PB1 / Pajak Restoran',
+                        'type' => 'Pajak',
+                        'value_type' => 'percent',
+                        'value' => $cleanTax . '%',
+                        'applies_to' => 'Semua Menu',
+                        'is_active' => $cleanTax > 0,
+                    ]);
+                    foreach ($existingTaxes->slice(1) as $dup) {
+                        $dup->delete();
+                    }
+                } else {
+                    StoreTaxFee::withoutGlobalScope('store')->create([
+                        'store_id' => $store->id,
+                        'name' => 'PB1 / Pajak Restoran',
+                        'type' => 'Pajak',
+                        'value_type' => 'percent',
+                        'value' => $cleanTax . '%',
+                        'applies_to' => 'Semua Menu',
+                        'is_active' => $cleanTax > 0,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
      * List all tenants across platform (Paginated & Filterable).
      */
     public function listTenants(Request $request): JsonResponse
@@ -89,6 +220,8 @@ class InternalPlatformController extends Controller
             ->when($status, fn ($q) => $q->where('status', $status))
             ->orderBy('created_at', 'desc')
             ->paginate((int) $request->query('per_page', 10));
+
+        $tenants->getCollection()->transform(fn (Tenant $t) => $this->enrichTenantFeeSettings($t));
 
         return $this->success($tenants);
     }
@@ -113,6 +246,8 @@ class InternalPlatformController extends Controller
             $tu->setAttribute('store_name', $firstRole?->store?->name ?? 'Semua Outlet');
         }
 
+        $this->enrichTenantFeeSettings($tenant);
+
         return $this->success($tenant);
     }
 
@@ -131,6 +266,8 @@ class InternalPlatformController extends Controller
             'owner_password' => ['required', 'string', 'min:8'],
             'store_name' => ['nullable', 'string', 'max:255'],
             'store_code' => ['nullable', 'string', 'max:50'],
+            'platform_fee_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $tenant = $this->tenantService->registerTenant([
@@ -146,11 +283,17 @@ class InternalPlatformController extends Controller
             'store_code' => $validated['store_code'] ?? 'MAIN-01',
         ]);
 
-        return $this->success($tenant, 'Tenant registered successfully by administrator.', Response::HTTP_CREATED);
+        $this->syncTenantFeeSettings(
+            $tenant,
+            isset($validated['platform_fee_percentage']) ? (float) $validated['platform_fee_percentage'] : 0.0,
+            isset($validated['tax_percentage']) ? (float) $validated['tax_percentage'] : 10.0
+        );
+
+        return $this->success($this->enrichTenantFeeSettings($tenant), 'Tenant registered successfully by administrator.', Response::HTTP_CREATED);
     }
 
     /**
-     * Update tenant basic details.
+     * Update tenant basic details & platform fee/tax configuration.
      */
     public function updateTenant(Request $request, string $id): JsonResponse
     {
@@ -162,11 +305,25 @@ class InternalPlatformController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string'],
             'status' => ['nullable', 'string', 'in:ACTIVE,SUSPENDED,INACTIVE'],
+            'platform_fee_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
-        $tenant->update($validated);
+        $tenant->update(collect($validated)->only(['name', 'email', 'phone', 'address', 'status'])->toArray());
 
-        return $this->success($tenant, 'Data tenant berhasil diperbarui.');
+        if (array_key_exists('platform_fee_percentage', $validated) || array_key_exists('tax_percentage', $validated)) {
+            $this->syncTenantFeeSettings(
+                $tenant,
+                array_key_exists('platform_fee_percentage', $validated) && $validated['platform_fee_percentage'] !== null
+                    ? (float) $validated['platform_fee_percentage']
+                    : null,
+                array_key_exists('tax_percentage', $validated) && $validated['tax_percentage'] !== null
+                    ? (float) $validated['tax_percentage']
+                    : null
+            );
+        }
+
+        return $this->success($this->enrichTenantFeeSettings($tenant), 'Data & pengaturan biaya mitra berhasil diperbarui.');
     }
 
     /**

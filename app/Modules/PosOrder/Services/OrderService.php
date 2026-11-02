@@ -235,11 +235,27 @@ class OrderService
             $tenantId = $store ? $store->tenant_id : null;
             $settingService = app(\App\Modules\System\Services\SettingService::class);
             $taxPct = (float) $settingService->get('tax_percentage', $storeId, $tenantId, 0);
-            $servicePct = (float) $settingService->get('service_charge_percentage', $storeId, $tenantId, 0);
+            if ($taxPct <= 0) {
+                $activeTaxes = \App\Modules\Tenant\Models\StoreTaxFee::withoutGlobalScope('store')
+                    ->where('store_id', $storeId)
+                    ->where('type', 'Pajak')
+                    ->where('is_active', true)
+                    ->get();
+                foreach ($activeTaxes as $t) {
+                    if ($t->value_type === 'percent') {
+                        $taxPct += (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', (string) $t->value));
+                    }
+                }
+            }
+            $platformFeePct = (float) $settingService->get(
+                'platform_fee_percentage',
+                null,
+                $tenantId,
+                $settingService->get('service_charge_percentage', $storeId, $tenantId, 0)
+            );
 
-            $serviceCharge = $servicePct > 0 ? round(($subtotal * $servicePct) / 100, 2) : 0;
-            $taxable = $subtotal + $serviceCharge;
-            $taxAmount = $taxPct > 0 ? round(($taxable * $taxPct) / 100, 2) : 0;
+            $serviceCharge = $platformFeePct > 0 ? round(($subtotal * $platformFeePct) / 100) : 0;
+            $taxAmount = $taxPct > 0 ? round(($subtotal * $taxPct) / 100) : 0;
             $totalAmount = $subtotal + $serviceCharge + $taxAmount;
 
             $order = Order::create([
