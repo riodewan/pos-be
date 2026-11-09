@@ -140,4 +140,20 @@ class AccountProfileController extends Controller
             'data' => $activities,
         ]);
     }
+
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        // Cabut semua token Sanctum milik user ini
+        $user->tokens()->delete();
+
+        // Soft delete user (User model menggunakan SoftDeletes)
+        $user->delete();
+
+        return response()->json([
+            'message' => 'Akun berhasil dihapus.',
+        ]);
+    }
 }

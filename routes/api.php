@@ -16,6 +16,7 @@ Route::prefix('auth')->group(function () {
         Route::put('/account/profile', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'updateProfile']);
         Route::put('/account/password', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'updatePassword']);
         Route::get('/account/login-activities', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'loginActivities']);
+        Route::delete('/account', [\App\Modules\Auth\Http\Controllers\AccountProfileController::class, 'deleteAccount']);
     });
 });
 
