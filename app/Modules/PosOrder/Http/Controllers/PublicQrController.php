@@ -41,6 +41,13 @@ class PublicQrController extends Controller
             ], 404);
         }
 
+        // Validasi QR sekali pakai: kedaluwarsa / kuota pemakaian habis
+        if ($blockReason = $qrCode->orderingBlockReason()) {
+            return response()->json([
+                'message' => $blockReason,
+            ], 410);
+        }
+
         if ($qrCode->table->status !== TableStatus::ACTIVE) {
             return response()->json([
                 'message' => 'Meja saat ini sedang tidak aktif atau tidak tersedia.',
@@ -60,7 +67,8 @@ class PublicQrController extends Controller
             ->orderBy('name', 'asc')
             ->get();
 
-        $activeOrder = Order::withoutGlobalScope('store')
+        // QR sekali pakai adalah sesi baru, jangan tampilkan pesanan aktif tamu lain di meja yang sama
+        $activeOrder = $qrCode->type === QrCode::TYPE_DISPOSABLE ? null : Order::withoutGlobalScope('store')
             ->where('store_id', $qrCode->store_id)
             ->where('table_id', $qrCode->table_id)
             ->whereIn('status', ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'])
@@ -92,6 +100,14 @@ class PublicQrController extends Controller
             'message' => 'QR code resolved successfully.',
             'data' => [
                 'token' => $qrCode->token,
+                'qr' => [
+                    'type' => $qrCode->type,
+                    'label' => $qrCode->label,
+                    'expires_at' => $qrCode->expires_at?->toIso8601String(),
+                    'remaining_uses' => $qrCode->max_uses !== null
+                        ? max(0, $qrCode->max_uses - $qrCode->used_count)
+                        : null,
+                ],
                 'store' => [
                     'id' => $qrCode->store->id,
                     'name' => $qrCode->store->name,

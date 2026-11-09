@@ -56,7 +56,7 @@ class Table extends Model
 
     public function activeQrCode(): HasOne
     {
-        return $this->hasOne(QrCode::class, 'table_id')->where('status', 'ACTIVE');
+        return $this->hasOne(QrCode::class, 'table_id')->where('status', 'ACTIVE')->where('type', QrCode::TYPE_TABLE);
     }
 
     public function orders(): HasMany

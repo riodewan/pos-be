@@ -193,9 +193,10 @@ class TableService
     public function generateQrCode(Table $table): QrCode
     {
         return DB::transaction(function () use ($table) {
-            // Deactivate any currently active QR for this table
+            // Deactivate any currently active permanent QR for this table (QR sekali pakai tidak tersentuh)
             QrCode::withoutGlobalScope('store')
                 ->where('table_id', $table->id)
+                ->where('type', QrCode::TYPE_TABLE)
                 ->where('status', QrStatus::ACTIVE)
                 ->update(['status' => QrStatus::INACTIVE]);
 
@@ -207,6 +208,7 @@ class TableService
                 'store_id' => $table->store_id,
                 'table_id' => $table->id,
                 'token' => $token,
+                'type' => QrCode::TYPE_TABLE,
                 'status' => QrStatus::ACTIVE,
             ]);
         });

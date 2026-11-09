@@ -303,6 +303,16 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::get('/tables/{id}/qr', [\App\Modules\PosOrder\Http\Controllers\TableController::class, 'getQrCodes'])
             ->middleware('permission:qr.view');
 
+        // Disposable (single-use / event) QR Codes
+        Route::get('/disposable-qrs', [\App\Modules\PosOrder\Http\Controllers\DisposableQrController::class, 'index'])
+            ->middleware('permission:qr.view');
+        Route::post('/disposable-qrs', [\App\Modules\PosOrder\Http\Controllers\DisposableQrController::class, 'store'])
+            ->middleware('permission:qr.generate');
+        Route::patch('/disposable-qrs/{id}/deactivate', [\App\Modules\PosOrder\Http\Controllers\DisposableQrController::class, 'deactivate'])
+            ->middleware('permission:qr.generate');
+        Route::delete('/disposable-qrs/{id}', [\App\Modules\PosOrder\Http\Controllers\DisposableQrController::class, 'destroy'])
+            ->middleware('permission:qr.generate');
+
         // Orders
         Route::get('/orders', [\App\Modules\PosOrder\Http\Controllers\OrderController::class, 'index'])
             ->middleware('permission:order.view');

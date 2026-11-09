@@ -215,6 +215,11 @@ class OrderService
             throw new InvalidArgumentException('Invalid or inactive QR code.');
         }
 
+        // Validasi QR sekali pakai: kedaluwarsa / kuota pemakaian habis
+        if ($blockReason = $qrCode->orderingBlockReason()) {
+            throw new InvalidArgumentException($blockReason);
+        }
+
         if ($qrCode->table->status !== TableStatus::ACTIVE) {
             throw new InvalidArgumentException('Meja saat ini sedang tidak aktif atau tidak tersedia.');
         }
@@ -240,7 +245,21 @@ class OrderService
             throw new InvalidArgumentException('One or more selected products are invalid or unavailable.');
         }
 
-        return DB::transaction(function () use ($data, $storeId, $tableId, $products) {
+        return DB::transaction(function () use ($data, $storeId, $tableId, $products, $qrCode) {
+            // Catat pemakaian QR secara atomik. Kondisi WHERE mencegah race condition
+            // ketika dua pesanan dikirim bersamaan dari QR sekali pakai yang sama.
+            $consumed = QrCode::withoutGlobalScope('store')
+                ->where('id', $qrCode->id)
+                ->where('status', QrStatus::ACTIVE)
+                ->where(function ($q) {
+                    $q->whereNull('max_uses')->orWhereColumn('used_count', '<', 'max_uses');
+                })
+                ->increment('used_count');
+
+            if ($consumed === 0) {
+                throw new InvalidArgumentException('QR code sekali pakai ini sudah digunakan. Silakan minta QR baru ke kasir.');
+            }
+
             $orderNumber = 'QR-' . date('Ymd') . '-' . strtoupper(Str::random(6));
 
             $subtotal = 0;
