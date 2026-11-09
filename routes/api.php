@@ -326,6 +326,7 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
         Route::get('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'index']);
         Route::post('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'store']);
         Route::get('/reservations/{id}', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'show']);
+        Route::put('/reservations/{id}', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'update']);
         Route::put('/reservations/{id}/status', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'updateStatus']);
         Route::delete('/reservations/{id}', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'destroy']);
 

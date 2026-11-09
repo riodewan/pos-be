@@ -109,6 +109,31 @@ class ReservationController extends Controller
         ]);
     }
 
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $reservation = Reservation::findOrFail($id);
+
+        $validated = $request->validate([
+            'table_id' => ['nullable', 'string'],
+            'customer_name' => ['sometimes', 'required', 'string', 'max:100'],
+            'customer_phone' => ['nullable', 'string', 'max:20'],
+            'customer_email' => ['nullable', 'email', 'max:100'],
+            'guest_count' => ['sometimes', 'required', 'integer', 'min:1'],
+            'reservation_date' => ['sometimes', 'required', 'date'],
+            'reservation_time' => ['sometimes', 'required', 'string'],
+            'status' => ['nullable', 'string', 'in:Menunggu,Dikonfirmasi,Selesai,Dibatalkan'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $reservation->update($validated);
+        $reservation->load('table');
+
+        return response()->json([
+            'message' => 'Reservation updated successfully.',
+            'data' => $reservation,
+        ]);
+    }
+
     public function updateStatus(Request $request, string $id): JsonResponse
     {
         $reservation = Reservation::findOrFail($id);
