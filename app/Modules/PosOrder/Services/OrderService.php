@@ -353,22 +353,8 @@ class OrderService
                 app(\App\Modules\Customer\Services\CustomerSyncService::class)->recalculateCustomerStats($customer);
             }
 
-            // Direct Customer Payment (Self-Service QR Flow)
-            if (!empty($data['payment_method'])) {
-                $method = PaymentMethod::tryFrom($data['payment_method']) ?? PaymentMethod::QRIS;
-                $paymentService = app(\App\Modules\PosOrder\Services\PaymentService::class);
-                $paymentService->processPayment($order, [
-                    'method' => $method,
-                    'amount' => $totalAmount,
-                    'provider' => 'QRIS_SIMULATOR',
-                    'provider_reference' => 'QRIS-' . date('Ymd') . '-' . strtoupper(Str::random(8)),
-                    'metadata' => [
-                        'channel' => 'CUSTOMER_QR_SELF_SERVICE',
-                        'paid_at' => now()->toIso8601String(),
-                    ],
-                    'auto_complete' => false,
-                ]);
-            }
+            // Note: Payment will be processed when customer pays via real iPaymu QRIS or at cashier.
+            // Orders stay in PENDING status until confirmed by payment gateway or cashier.
 
             // Create in-app operational notification for QR Order
             try {
