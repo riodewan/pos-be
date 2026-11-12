@@ -120,6 +120,30 @@ class IpaymuService
 
         $res = $this->request('POST', '/payment/direct', $payload);
 
+        $rawQrImage = $res['QrImage'] ?? '';
+        $resolvedQrImage = $rawQrImage;
+
+        // If iPaymu returns an HTML /qris-basic/... URL, resolve the direct base64 image data URI
+        if (!empty($rawQrImage) && filter_var($rawQrImage, FILTER_VALIDATE_URL)) {
+            try {
+                $ch = curl_init($rawQrImage);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_TIMEOUT => 6,
+                    CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                ]);
+                $html = curl_exec($ch);
+                curl_close($ch);
+
+                if (!empty($html) && preg_match('/src=["\'](data:image\/[^"\']+)["\']/', $html, $matches)) {
+                    $resolvedQrImage = $matches[1];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to resolve iPaymu QrImage base64', ['error' => $e->getMessage()]);
+            }
+        }
+
         $result = [
             'order_id' => $order->id,
             'order_number' => $order->order_number,
@@ -128,7 +152,8 @@ class IpaymuService
             'reference_id' => $res['ReferenceId'] ?? $order->order_number,
             'amount' => $res['Total'] ?? $orderTotal,
             'qr_string' => $res['QrString'] ?? '',
-            'qr_image' => $res['QrImage'] ?? '',
+            'qr_image' => $resolvedQrImage,
+            'qr_url' => $rawQrImage,
             'qr_template' => $res['QrTemplate'] ?? '',
             'expired' => $res['Expired'] ?? '',
             'nmid' => $res['NMID'] ?? '',
