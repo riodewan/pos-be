@@ -3,23 +3,30 @@
 namespace App\Modules\PosOrder\Http\Controllers;
 
 use App\Core\Enums\CommonStatus;
+use App\Core\Enums\PaymentMethod;
+use App\Core\Enums\PaymentStatus;
 use App\Core\Enums\QrStatus;
 use App\Core\Enums\TableStatus;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\PosOrder\Models\Order;
 use App\Modules\PosOrder\Models\QrCode;
+use App\Modules\PosOrder\Services\IpaymuService;
 use App\Modules\PosOrder\Services\OrderService;
+use App\Modules\PosOrder\Services\PaymentService;
 use App\Modules\System\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class PublicQrController extends Controller
 {
     public function __construct(
         protected OrderService $orderService,
-        protected SettingService $settingService
+        protected SettingService $settingService,
+        protected IpaymuService $ipaymuService
     ) {}
 
     /**
@@ -248,5 +255,138 @@ class PublicQrController extends Controller
             'message' => 'Order retrieved successfully.',
             'data' => $order,
         ]);
+    }
+
+    /**
+     * Generate dynamic QRIS payment via iPaymu for customer dine-in self-order.
+     */
+    public function createIpaymuQris(Request $request, string $token, string $orderId): JsonResponse
+    {
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $token)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$qrCode) {
+            return response()->json(['message' => 'Invalid or inactive QR code.'], 404);
+        }
+
+        $order = Order::withoutGlobalScope('store')
+            ->where('id', $orderId)
+            ->where('store_id', $qrCode->store_id)
+            ->where('table_id', $qrCode->table_id)
+            ->firstOrFail();
+
+        if ($order->status === \App\Core\Enums\OrderStatus::COMPLETED) {
+            return response()->json(['message' => 'Pesanan ini sudah selesai dibayar.'], 422);
+        }
+
+        try {
+            $qris = $this->ipaymuService->createQris($order, [
+                'name' => $request->input('customer_name', $order->customer_name),
+                'phone' => $request->input('customer_phone', $order->customer_phone),
+                'email' => $request->input('customer_email'),
+            ]);
+
+            return response()->json([
+                'message' => 'QRIS iPaymu berhasil dibuat.',
+                'data' => $qris,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to generate customer iPaymu QRIS', ['order_id' => $orderId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Check transaction status with iPaymu for customer dine-in self-order.
+     */
+    public function checkIpaymuStatus(Request $request, string $token, string $orderId): JsonResponse
+    {
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $token)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$qrCode) {
+            return response()->json(['message' => 'Invalid or inactive QR code.'], 404);
+        }
+
+        $order = Order::withoutGlobalScope('store')
+            ->where('id', $orderId)
+            ->where('store_id', $qrCode->store_id)
+            ->where('table_id', $qrCode->table_id)
+            ->with(['orderItems.product', 'table', 'payments'])
+            ->firstOrFail();
+
+        $successPayment = $order->payments->firstWhere('status', PaymentStatus::SUCCESS);
+        if ($successPayment) {
+            return response()->json([
+                'message' => 'Pesanan sudah lunas.',
+                'is_paid' => true,
+                'data' => [
+                    'order' => $order,
+                    'payment' => $successPayment,
+                ],
+            ]);
+        }
+
+        $trxId = $request->query('transaction_id');
+        if (!$trxId) {
+            $cached = Cache::get("ipaymu_order_{$order->id}");
+            $trxId = $cached['transaction_id'] ?? null;
+        }
+
+        if (!$trxId) {
+            return response()->json([
+                'message' => 'Data transaksi iPaymu tidak ditemukan.',
+                'is_paid' => false,
+            ], 404);
+        }
+
+        try {
+            $status = $this->ipaymuService->checkTransaction($trxId);
+
+            if ($status['is_paid']) {
+                $paymentService = app(PaymentService::class);
+                $payment = $paymentService->processPayment($order, [
+                    'method' => PaymentMethod::QRIS,
+                    'amount' => (float) $order->total_amount,
+                    'provider' => 'IPAYMU',
+                    'provider_reference' => (string) $status['transaction_id'],
+                    'metadata' => [
+                        'channel' => 'CUSTOMER_QR_SELF_SERVICE',
+                        'ipaymu_transaction_id' => $status['transaction_id'],
+                        'session_id' => $status['session_id'],
+                        'paid_date' => $status['paid_date'],
+                    ],
+                    'auto_complete' => false,
+                ]);
+
+                return response()->json([
+                    'message' => 'Pembayaran berhasil dikonfirmasi.',
+                    'is_paid' => true,
+                    'data' => [
+                        'order' => $order->fresh(['orderItems.product', 'table', 'payments']),
+                        'payment' => $payment,
+                    ],
+                ]);
+            }
+
+            return response()->json([
+                'message' => $status['status_desc'] ?: 'Menunggu pembayaran.',
+                'is_paid' => false,
+                'data' => $status,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'is_paid' => false,
+            ], 422);
+        }
     }
 }

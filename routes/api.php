@@ -332,6 +332,10 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
             ->middleware('permission:payment.process');
         Route::get('/transactions', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'listTransactions'])
             ->middleware('permission:payment.view');
+        Route::post('/orders/{id}/ipaymu/qris', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'createIpaymuQris'])
+            ->middleware('permission:payment.process');
+        Route::get('/orders/{id}/ipaymu/status', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'checkIpaymuStatus'])
+            ->middleware('permission:payment.view');
 
         // Reservations
         Route::get('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'index']);
@@ -382,6 +386,11 @@ Route::prefix('public')->group(function () {
     Route::post('/qr/{token}/order', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'order']);
     Route::post('/qr/{token}/order/{orderId}/pay', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'payOrder']);
     Route::get('/qr/{token}/order/{orderId}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'showOrder']);
+    Route::post('/qr/{token}/order/{orderId}/ipaymu/qris', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'createIpaymuQris']);
+    Route::get('/qr/{token}/order/{orderId}/ipaymu/status', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'checkIpaymuStatus']);
+
+    // iPaymu Webhook Callback
+    Route::post('/payments/ipaymu/webhook', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'webhook']);
 });
 
 /*
