@@ -17,6 +17,7 @@ class IpaymuService
     protected string $apiKey;
     protected string $baseUrl;
     protected string $env;
+    protected string $notifyUrl;
 
     public function __construct()
     {
@@ -24,6 +25,7 @@ class IpaymuService
         $this->apiKey = (string) config('ipaymu.api_key', env('IPAYMU_API_KEY', 'SANDBOX7B6D8133-D6FF-4443-93E0-95E60DA70F29'));
         $this->baseUrl = rtrim((string) config('ipaymu.base_url', env('IPAYMU_URL', 'https://sandbox.ipaymu.com/api/v2')), '/');
         $this->env = (string) config('ipaymu.env', env('IPAYMU_ENV', 'sandbox'));
+        $this->notifyUrl = (string) config('ipaymu.notify_url', env('IPAYMU_NOTIFY_URL', 'https://sandbox.ipaymu.com/notify'));
     }
 
     /**
@@ -88,8 +90,18 @@ class IpaymuService
             throw new InvalidArgumentException('Total pesanan harus lebih besar dari 0.');
         }
 
-        // Webhook URL
-        $notifyUrl = url('/api/public/payments/ipaymu/webhook');
+        // Webhook URL: iPaymu strictly requires a public http(s) URL.
+        // If app runs on localhost / 127.0.0.1, fallback to a valid public URL so iPaymu accepts the request.
+        $notifyUrl = $this->notifyUrl;
+        if (empty($notifyUrl)) {
+            $appUrl = url('/api/public/payments/ipaymu/webhook');
+            $host = parse_url($appUrl, PHP_URL_HOST);
+            if (in_array($host, ['localhost', '127.0.0.1', '::1']) || str_ends_with((string) $host, '.local') || str_ends_with((string) $host, '.test')) {
+                $notifyUrl = 'https://sandbox.ipaymu.com/notify';
+            } else {
+                $notifyUrl = $appUrl;
+            }
+        }
 
         $name = !empty($customer['name']) ? $customer['name'] : ($order->customer_name ?: 'Pelanggan');
         $phone = !empty($customer['phone']) ? $customer['phone'] : ($order->customer_phone ?: '081234567890');
