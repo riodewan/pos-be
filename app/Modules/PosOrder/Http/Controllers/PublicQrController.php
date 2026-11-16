@@ -389,4 +389,62 @@ class PublicQrController extends Controller
             ], 422);
         }
     }
+
+    /**
+     * Simulate successful sandbox payment for customer table QR order.
+     * Only permitted in sandbox/local environment.
+     */
+    public function simulateSandboxPayment(Request $request, string $token, string $orderId): JsonResponse
+    {
+        if (config('ipaymu.env') !== 'sandbox' && !app()->environment('local')) {
+            return response()->json(['message' => 'Simulasi hanya diperbolehkan di mode sandbox / lokal.'], 403);
+        }
+
+        $qrCode = QrCode::withoutGlobalScope('store')
+            ->where('token', $token)
+            ->where('status', QrStatus::ACTIVE)
+            ->whereNull('deleted_at')
+            ->firstOrFail();
+
+        $order = Order::withoutGlobalScope('store')
+            ->where('id', $orderId)
+            ->where('store_id', $qrCode->store_id)
+            ->with(['orderItems.product', 'table', 'payments'])
+            ->firstOrFail();
+
+        $successPayment = $order->payments->firstWhere('status', PaymentStatus::SUCCESS);
+        if ($successPayment) {
+            return response()->json([
+                'message' => 'Pesanan sudah lunas.',
+                'is_paid' => true,
+                'data' => [
+                    'order' => $order,
+                    'payment' => $successPayment,
+                ],
+            ]);
+        }
+
+        $paymentService = app(PaymentService::class);
+        $payment = $paymentService->processPayment($order, [
+            'method' => PaymentMethod::QRIS,
+            'amount' => (float) $order->total_amount,
+            'provider' => 'IPAYMU_SANDBOX_SIMULATOR',
+            'provider_reference' => 'SIM-QR-' . date('Ymd') . '-' . strtoupper(\Illuminate\Support\Str::random(6)),
+            'metadata' => [
+                'channel' => 'CUSTOMER_QR_SANDBOX_SIMULATION',
+                'paid_at' => now()->toIso8601String(),
+                'simulated' => true,
+            ],
+            'auto_complete' => false,
+        ]);
+
+        return response()->json([
+            'message' => 'Simulasi pembayaran QR meja berhasil!',
+            'is_paid' => true,
+            'data' => [
+                'order' => $order->fresh(['orderItems.product', 'table', 'payments']),
+                'payment' => $payment,
+            ],
+        ]);
+    }
 }

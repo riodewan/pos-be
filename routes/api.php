@@ -336,6 +336,8 @@ Route::middleware(['auth:sanctum', 'tenant.context', 'store.context'])->group(fu
             ->middleware('permission:payment.process');
         Route::get('/orders/{id}/ipaymu/status', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'checkIpaymuStatus'])
             ->middleware('permission:payment.view');
+        Route::post('/orders/{id}/ipaymu/simulate-pay', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'simulateSandboxPayment'])
+            ->middleware('permission:payment.process');
 
         // Reservations
         Route::get('/reservations', [\App\Modules\PosOrder\Http\Controllers\ReservationController::class, 'index']);
@@ -388,6 +390,7 @@ Route::prefix('public')->group(function () {
     Route::get('/qr/{token}/order/{orderId}', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'showOrder']);
     Route::post('/qr/{token}/order/{orderId}/ipaymu/qris', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'createIpaymuQris']);
     Route::get('/qr/{token}/order/{orderId}/ipaymu/status', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'checkIpaymuStatus']);
+    Route::post('/qr/{token}/order/{orderId}/ipaymu/simulate-pay', [\App\Modules\PosOrder\Http\Controllers\PublicQrController::class, 'simulateSandboxPayment']);
 
     // iPaymu Webhook Callback
     Route::post('/payments/ipaymu/webhook', [\App\Modules\PosOrder\Http\Controllers\PaymentController::class, 'webhook']);

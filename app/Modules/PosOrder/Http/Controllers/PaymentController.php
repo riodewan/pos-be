@@ -188,6 +188,53 @@ class PaymentController extends Controller
     }
 
     /**
+     * Simulate successful sandbox payment for local testing.
+     * Only permitted in sandbox/local environment.
+     */
+    public function simulateSandboxPayment(Request $request, string $orderId): JsonResponse
+    {
+        if (config('ipaymu.env') !== 'sandbox' && !app()->environment('local')) {
+            return response()->json(['message' => 'Simulasi hanya diperbolehkan di mode sandbox / lokal.'], 403);
+        }
+
+        $order = Order::with('payments')->findOrFail($orderId);
+
+        $successPayment = $order->payments->firstWhere('status', PaymentStatus::SUCCESS);
+        if ($successPayment) {
+            return response()->json([
+                'message' => 'Pesanan sudah lunas.',
+                'is_paid' => true,
+                'data' => [
+                    'order' => $order,
+                    'payment' => $successPayment,
+                ],
+            ]);
+        }
+
+        $payment = $this->paymentService->processPayment($order, [
+            'method' => PaymentMethod::QRIS,
+            'amount' => (float) $order->total_amount,
+            'provider' => 'IPAYMU_SANDBOX_SIMULATOR',
+            'provider_reference' => 'SIM-' . date('Ymd') . '-' . strtoupper(\Illuminate\Support\Str::random(6)),
+            'metadata' => [
+                'channel' => 'IPAYMU_SANDBOX_SIMULATION',
+                'paid_at' => now()->toIso8601String(),
+                'simulated' => true,
+            ],
+            'auto_complete' => true,
+        ], $request->user()?->id);
+
+        return response()->json([
+            'message' => 'Simulasi pembayaran QRIS iPaymu berhasil!',
+            'is_paid' => true,
+            'data' => [
+                'order' => $order->fresh(['orderItems.product', 'table', 'payments']),
+                'payment' => $payment,
+            ],
+        ]);
+    }
+
+    /**
      * Webhook notification listener from iPaymu server.
      * Public endpoint exempt from CSRF / Sanctum auth.
      */
